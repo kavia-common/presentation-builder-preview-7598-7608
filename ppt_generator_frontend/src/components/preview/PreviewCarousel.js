@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import SlidePreview from './SlidePreview';
 
 // PUBLIC_INTERFACE
-export default function PreviewCarousel({ orderedSlides, templateModel, wizardData, currentWizardStep }) {
+export default function PreviewCarousel({ orderedSlides, templateModel, extractedTemplate, wizardData, currentWizardStep }) {
   /** Slide-by-slide preview with navigation, driven by the actual ordered flow steps. */
   const slides = useMemo(() => (Array.isArray(orderedSlides) ? orderedSlides : []), [orderedSlides]);
   const [idx, setIdx] = useState(0);
@@ -47,7 +47,7 @@ export default function PreviewCarousel({ orderedSlides, templateModel, wizardDa
         </button>
       </div>
 
-      <SlidePreview slideStep={current} templateModel={templateModel} wizardData={wizardData} />
+      <SlidePreview slideStep={current} templateModel={templateModel} extractedTemplate={extractedTemplate} wizardData={wizardData} />
     </div>
   );
 }

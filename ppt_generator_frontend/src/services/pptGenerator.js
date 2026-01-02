@@ -1,8 +1,11 @@
 import PptxGenJS from 'pptxgenjs';
+import { buildTemplateIndex, getAssetPublicUrl, getLayout, getTemplatePlaceholder } from './schemaLoader';
 
 /**
- * This generator is intentionally conservative: because extraction may be partial,
- * it focuses on stable placeholder IDs + modular mapping to refine later without changing UI contracts.
+ * Generator rules (template-driven):
+ * - Prefer coordinates and placeholder mappings from extracted normalized template (templateModel.layouts[*].placeholders[*].box).
+ * - Slide order is authoritative: GlobalFirst + N SkillFactory groups (4 slides each) + GlobalLast.
+ * - If extracted template is minimal, fall back to safe stacking layout (non-breaking).
  */
 
 function isProbablyDataUrl(v) {
@@ -21,6 +24,24 @@ async function fileToDataUrl(file) {
     });
   }
   return null;
+}
+
+async function urlToDataUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  if (isProbablyDataUrl(url)) return url;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onerror = () => reject(new Error('Failed to read asset'));
+      r.onload = () => resolve(String(r.result));
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
 }
 
 function applyTransform(value, transformName) {
@@ -79,41 +100,114 @@ function resolveValueForStep(wizardData, slideStep, fieldId) {
   return undefined;
 }
 
+function ptToIn(pt) {
+  // PptxGen uses inches. 72 points per inch.
+  return pt / 72;
+}
+
+function addFallbackText(slide, i, placeholderId, value) {
+  const x = 0.6;
+  const y = 0.6 + i * 0.65;
+  const w = 12.3;
+  const h = 1.0;
+  const hint = `[${placeholderId}]`;
+
+  const text = value == null || value === '' ? `${hint} (empty)` : `${hint}\n${String(value)}`;
+  slide.addText(text, {
+    x,
+    y,
+    w,
+    h,
+    fontSize: 14,
+    color: '111827',
+  });
+}
+
+async function addFallbackImage(slide, i, placeholderId, fileOrUrl) {
+  const x = 0.6;
+  const y = 0.6 + i * 0.65;
+  const w = 3.0;
+  const h = 2.0;
+  const hint = `[${placeholderId}]`;
+
+  const dataUrl = await fileToDataUrl(fileOrUrl);
+  if (dataUrl) {
+    slide.addImage({ data: dataUrl, x, y, w, h });
+    slide.addText(hint, { x: x + 3.2, y, w: 9.1, h: 0.5, fontSize: 10, color: '666666' });
+  } else {
+    slide.addText(`${hint} (image missing)`, { x, y, w: 12.3, h: 0.6, fontSize: 12, color: '999999' });
+  }
+}
+
+async function renderFixedShapes(slide, layout, templateIndex) {
+  const fixed = Array.isArray(layout?.fixedShapes) ? layout.fixedShapes : [];
+  for (const sh of fixed) {
+    if (!sh?.box) continue;
+    const x = ptToIn(sh.box.xPt);
+    const y = ptToIn(sh.box.yPt);
+    const w = ptToIn(sh.box.wPt);
+    const h = ptToIn(sh.box.hPt);
+
+    if (sh.shapeType === 'picture' && sh.assetId) {
+      const ref = templateIndex?.assetsById?.get(sh.assetId) || null;
+      const url = getAssetPublicUrl(ref);
+      const data = await urlToDataUrl(url);
+      if (data) {
+        slide.addImage({ data, x, y, w, h });
+      }
+      continue;
+    }
+
+    // Minimal support for filled rectangles (common for master bands); others can be expanded later.
+    if (sh.shapeType === 'rect' || sh.shapeType === 'roundRect' || sh.shapeType === 'unknown') {
+      slide.addShape(PptxGenJS.ShapeType.rect, {
+        x,
+        y,
+        w,
+        h,
+        fill: sh.fill && sh.fill !== 'none' ? { color: String(sh.fill).replace('#', '') } : undefined,
+        line: sh.stroke && sh.stroke !== 'none' ? { color: String(sh.stroke).replace('#', ''), width: sh.strokeWidthPt || 0.5 } : undefined,
+      });
+    }
+  }
+}
+
 // PUBLIC_INTERFACE
-export async function generatePptx({ templateModel, flowSchema, orderedSlides, wizardData }) {
+export async function generatePptx({ templateModel, extractedTemplate, orderedSlides, wizardData }) {
   /**
    * Generate a PPTX in-browser and return a Blob plus a suggested filename.
-   * - templateModel: normalized template model (eventually from extractor; currently partial/contract)
-   * - flowSchema: slide type definitions (fields + placeholder IDs)
+   *
+   * - templateModel: extracted normalized template model (preferred) or fallback schema contract
+   * - extractedTemplate: {masters, relationships, assetsManifest} (optional)
    * - orderedSlides: ordered steps for the current wizard instance
    * - wizardData: grouped data model {globalFirst, skillFactories[], globalLast}
    */
   const pptx = new PptxGenJS();
 
-  // Basic theme alignment; PptxGenJS supports theme, but we keep it minimal for now.
-  // Colors are from Ocean Professional style guide.
   pptx.author = 'Presentation Builder';
   pptx.company = 'Kavia';
   pptx.subject = 'Generated deck';
 
-  // If templateModel has pageSize, try to apply; else default to wide.
-  const widthPt = templateModel?.meta?.pageSize?.widthPt;
-  const heightPt = templateModel?.meta?.pageSize?.heightPt;
-  if (typeof widthPt === 'number' && typeof heightPt === 'number') {
-    pptx.layout = 'LAYOUT_WIDE';
-  } else {
-    pptx.layout = 'LAYOUT_WIDE';
-  }
+  // Layout: keep wide. If extracted provides exact size, we still set to wide; coordinates are in inches anyway.
+  pptx.layout = 'LAYOUT_WIDE';
 
   const slides = Array.isArray(orderedSlides) ? orderedSlides : [];
+  const templateIndex = buildTemplateIndex(templateModel, extractedTemplate);
 
-  // Each ordered slide becomes one PPT slide.
-  // Content is written with placeholder IDs in text to preserve stable mapping even without exact coordinates.
   for (const s of slides) {
     const slide = pptx.addSlide();
     slide.addNotes(`layoutId=${s.layoutId || ''} slideType=${s.slideType || ''}`);
 
+    const layout = getLayout(templateIndex, s.layoutId);
+
+    // Add fixed shapes (layout/master) if present in normalized template.
+    if (layout) {
+      // eslint-disable-next-line no-await-in-loop
+      await renderFixedShapes(slide, layout, templateIndex);
+    }
+
     const fields = Array.isArray(s.fields) ? s.fields : [];
+
     for (let i = 0; i < fields.length; i += 1) {
       const field = fields[i];
       const valueRaw = resolveValueForStep(wizardData, s, field.id);
@@ -123,34 +217,66 @@ export async function generatePptx({ templateModel, flowSchema, orderedSlides, w
         field?.mapping?.placeholderId ||
         `${String(s.slideType || 'slide').toUpperCase()}:${field.id}`;
 
-      const hint = `[${placeholderId}]`;
-
-      // Fallback layout: flowing vertical stack.
-      // NOTE: We keep placeholderId visible so later coordinate-accurate placement can be implemented
-      // without changing the schema or wizard.
-      const x = 0.6;
-      const y = 0.6 + i * 0.65;
-      const w = 12.3;
-      const h = 0.5;
+      // Template-driven placement:
+      // 1) Find placeholder by id in extracted template
+      // 2) Use its box (points) -> inches
+      // 3) Apply style hints (font size, color) when available
+      const ph = getTemplatePlaceholder(templateIndex, placeholderId);
+      const box = ph?.box;
 
       if (field.type === 'image') {
-        const dataUrl = await fileToDataUrl(valueRaw);
-        if (dataUrl) {
-          slide.addImage({ data: dataUrl, x, y, w: 3.0, h: 2.0 });
-          slide.addText(hint, { x: x + 3.2, y, w: w - 3.2, h, fontSize: 10, color: '666666' });
+        let dataUrl = await fileToDataUrl(valueRaw);
+        if (!dataUrl && ph?.assetId) {
+          const ref = templateIndex?.assetsById?.get(ph.assetId) || null;
+          const url = getAssetPublicUrl(ref);
+          dataUrl = await urlToDataUrl(url);
+        }
+
+        if (box && typeof box.xPt === 'number') {
+          const x = ptToIn(box.xPt);
+          const y = ptToIn(box.yPt);
+          const w = ptToIn(box.wPt);
+          const h = ptToIn(box.hPt);
+
+          if (dataUrl) {
+            slide.addImage({ data: dataUrl, x, y, w, h });
+          } else {
+            // Keep placeholder id visible for later fidelity
+            slide.addText(`[${placeholderId}] (image missing)`, { x, y, w, h: Math.min(h, 0.4), fontSize: 10, color: '999999' });
+          }
         } else {
-          slide.addText(`${hint} (image missing)`, { x, y, w, h, fontSize: 12, color: '999999' });
+          // eslint-disable-next-line no-await-in-loop
+          await addFallbackImage(slide, i, placeholderId, valueRaw);
         }
       } else {
-        const text = value == null || value === '' ? `${hint} (empty)` : `${hint}\n${String(value)}`;
-        slide.addText(text, {
-          x,
-          y,
-          w,
-          h: 1.0,
-          fontSize: 14,
-          color: '111827',
-        });
+        if (box && typeof box.xPt === 'number') {
+          const x = ptToIn(box.xPt);
+          const y = ptToIn(box.yPt);
+          const w = ptToIn(box.wPt);
+          const h = ptToIn(box.hPt);
+
+          const text = value == null || value === '' ? '' : String(value);
+          const style = ph?.style || null;
+
+          const fontSize = style?.fontSizePt ? Math.max(8, style.fontSizePt) : 14;
+          const color = style?.color ? String(style.color).replace('#', '') : '111827';
+          const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
+          const align = style?.align || 'left';
+
+          slide.addText(text || `[${placeholderId}]`, {
+            x,
+            y,
+            w,
+            h,
+            fontSize,
+            bold,
+            color,
+            align,
+            fontFace: style?.fontFamily || undefined,
+          });
+        } else {
+          addFallbackText(slide, i, placeholderId, value);
+        }
       }
     }
   }

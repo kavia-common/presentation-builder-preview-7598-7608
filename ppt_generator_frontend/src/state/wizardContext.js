@@ -168,6 +168,76 @@ function validateStep(flowSchema, wizardData, step) {
   return errorsByField;
 }
 
+function isNonEmptyString(v) {
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
+function requiredFieldKeyFromStep(step, preferredKeys) {
+  const fields = Array.isArray(step?.fields) ? step.fields : [];
+  for (const k of preferredKeys) {
+    if (fields.some((f) => f?.id === k)) return k;
+  }
+  // Fallback: first string-like field
+  const first = fields.find((f) => f?.type === 'string' || f?.type === 'richText' || f?.type === 'textarea');
+  return first?.id || null;
+}
+
+function minimalPreviewValidation(flowSchema, wizardData, orderedSlides) {
+  /**
+   * Requested gating:
+   * - GlobalFirst title present
+   * - Each SkillFactory has minimally required field stubs
+   * - GlobalLast closing/title present
+   *
+   * We implement this conservatively:
+   * - Use known common keys (title/closing/cta) when present; otherwise fall back to first text field.
+   * - Also enforce each SF group has all 4 slides present in data structure.
+   */
+  const errors = [];
+
+  const globalFirstStep = orderedSlides.find((s) => s.slideType === 'global_first');
+  if (globalFirstStep) {
+    const key = requiredFieldKeyFromStep(globalFirstStep, ['title', 'deckTitle', 'presentationTitle']);
+    if (key && !isNonEmptyString(wizardData?.globalFirst?.[key])) errors.push('Global First: title is required.');
+  }
+
+  const factories = Array.isArray(wizardData?.skillFactories) ? wizardData.skillFactories : [];
+  if (!factories.length) errors.push('At least one Skill Factory group is required.');
+
+  factories.forEach((sf, idx) => {
+    const slides = sf?.slides || {};
+    const hasAll = ['sf1', 'sf2', 'sf3', 'sf4'].every((k) => slides && Object.prototype.hasOwnProperty.call(slides, k));
+    if (!hasAll) errors.push(`Skill Factory ${idx + 1}: must contain exactly 4 slides (SF-1..SF-4).`);
+
+    // Minimal required content: at least one text field filled on SF-1 (or fallback).
+    const sf1Step = orderedSlides.find((s) => s.groupId === sf.id && s.slideType === 'sf1');
+    if (sf1Step) {
+      const key = requiredFieldKeyFromStep(sf1Step, ['title', 'name', 'skillFactoryTitle']);
+      if (key && !isNonEmptyString(slides?.sf1?.[key])) errors.push(`Skill Factory ${idx + 1} (SF-1): required field is missing.`);
+    }
+  });
+
+  const globalLastStep = orderedSlides.find((s) => s.slideType === 'global_last');
+  if (globalLastStep) {
+    const key = requiredFieldKeyFromStep(globalLastStep, ['title', 'closing', 'cta']);
+    if (key && !isNonEmptyString(wizardData?.globalLast?.[key])) errors.push('Global Last: closing/title is required.');
+  }
+
+  // Also run schema-required validations as a superset (if schema marks required fields).
+  if (flowSchema) {
+    for (const step of orderedSlides) {
+      const errs = validateStep(flowSchema, wizardData, step);
+      if (Object.keys(errs).length) {
+        // Keep this generic: the UI will show inline errors; for gating, one error is enough.
+        errors.push('Some required fields are missing.');
+        break;
+      }
+    }
+  }
+
+  return errors;
+}
+
 const initialState = {
   status: 'idle', // idle | loading | ready | error
   error: null,
@@ -176,13 +246,16 @@ const initialState = {
   wizardSchema: null,
   templateModel: null,
 
+  // Extracted artifacts bundle (masters/relationships/assetsManifest)
+  extractedTemplate: null,
+
   // New flow schema
   flowSchema: null,
 
   // New grouped data model
   wizardData: null,
 
-  currentStep: 0, // 0..orderedSlides.length (preview is last+1)
+  currentStep: 0, // 0..orderedSlides.length (preview is last)
   refinedLaterNote: false,
 
   // Validation cache for inline display
@@ -190,6 +263,9 @@ const initialState = {
     touched: {}, // stepKey -> true
     errors: {}, // stepKey -> {fieldId: [errs]}
   },
+
+  // Preview gating errors (high-level)
+  previewGateErrors: [],
 };
 
 function reducer(state, action) {
@@ -203,6 +279,7 @@ function reducer(state, action) {
         error: null,
         wizardSchema: action.payload.wizardSchema,
         templateModel: action.payload.templateModel,
+        extractedTemplate: action.payload.extractedTemplate,
         flowSchema: action.payload.flowSchema,
         wizardData: action.payload.wizardData,
         currentStep: action.payload.currentStep,
@@ -237,6 +314,19 @@ function reducer(state, action) {
       return { ...state, wizardData: next };
     }
 
+    case 'MOVE_SKILL_FACTORY': {
+      const { groupId, direction } = action.payload; // -1 up, +1 down
+      const arr = [...(state.wizardData?.skillFactories || [])];
+      const idx = arr.findIndex((g) => g.id === groupId);
+      if (idx < 0) return state;
+      const nextIdx = idx + direction;
+      if (nextIdx < 0 || nextIdx >= arr.length) return state;
+      const tmp = arr[idx];
+      arr[idx] = arr[nextIdx];
+      arr[nextIdx] = tmp;
+      return { ...state, wizardData: { ...state.wizardData, skillFactories: arr } };
+    }
+
     case 'SET_FIELD_FOR_STEP': {
       const { step, fieldId, value } = action.payload;
       const nextData = setStepValue(state.wizardData, step, fieldId, value);
@@ -265,15 +355,18 @@ function reducer(state, action) {
       };
     }
 
+    case 'SET_PREVIEW_GATE_ERRORS':
+      return { ...state, previewGateErrors: action.payload || [] };
+
     case 'RESTORE_DEFAULTS':
-      return { ...state, wizardData: action.payload.wizardData, validation: initialState.validation };
+      return { ...state, wizardData: action.payload.wizardData, validation: initialState.validation, previewGateErrors: [] };
 
     case 'CLEAR_ALL': {
       // Clear to empty values but keep structure.
       const cleared = buildDefaultWizardData(state.flowSchema);
       // Ensure title exists for filename, even if schema changes.
       if (cleared?.globalFirst?.title == null) cleared.globalFirst.title = '';
-      return { ...state, wizardData: cleared, validation: initialState.validation };
+      return { ...state, wizardData: cleared, validation: initialState.validation, previewGateErrors: [] };
     }
 
     case 'SET_REFINE_LATER':
@@ -288,7 +381,7 @@ const WizardContext = createContext(null);
 
 // PUBLIC_INTERFACE
 export function WizardProvider({ children, loadSchemas }) {
-  /** Provider for wizard state + persistence. Requires a loadSchemas() function returning {wizardSchema, templateModel}. */
+  /** Provider for wizard state + persistence. Requires a loadSchemas() function returning {wizardSchema, templateModel, extractedTemplate?}. */
   const [state, dispatch] = useReducer(reducer, initialState);
 
   // Load draft from localStorage and merge with defaults when schemas load
@@ -298,7 +391,7 @@ export function WizardProvider({ children, loadSchemas }) {
     async function run() {
       dispatch({ type: 'LOAD_START' });
       try {
-        const [{ wizardSchema, templateModel }, flowSchema] = await Promise.all([loadSchemas(), loadWizardFlowSchema()]);
+        const [{ wizardSchema, templateModel, extractedTemplate }, flowSchema] = await Promise.all([loadSchemas(), loadWizardFlowSchema()]);
         const defaults = buildDefaultWizardData(flowSchema);
 
         const stored = safeJsonParse(localStorage.getItem(STORAGE_KEY) || '');
@@ -313,6 +406,7 @@ export function WizardProvider({ children, loadSchemas }) {
             payload: {
               wizardSchema,
               templateModel,
+              extractedTemplate,
               flowSchema,
               wizardData: merged,
               currentStep: storedStep,
@@ -342,16 +436,13 @@ export function WizardProvider({ children, loadSchemas }) {
     const previewStepIndex = orderedSlides.length;
 
     function canGoToStep(targetStep) {
-      // Allow moving among form steps freely; Preview is gated by validation.
+      // Allow moving among form steps freely; Preview is gated by requested "basic validation".
       if (targetStep < previewStepIndex) return true;
       if (targetStep !== previewStepIndex) return false;
 
-      // Validate all steps before preview.
-      for (const step of orderedSlides) {
-        const errs = validateStep(state.flowSchema, state.wizardData, step);
-        if (Object.keys(errs).length) return false;
-      }
-      return true;
+      const gateErrors = minimalPreviewValidation(state.flowSchema, state.wizardData, orderedSlides);
+      dispatch({ type: 'SET_PREVIEW_GATE_ERRORS', payload: gateErrors });
+      return gateErrors.length === 0;
     }
 
     function markAndValidateStep(step) {
@@ -427,6 +518,12 @@ export function WizardProvider({ children, loadSchemas }) {
         removeSkillFactory(groupId) {
           /** Remove an existing Skill Factory group by id. */
           dispatch({ type: 'REMOVE_SKILL_FACTORY', payload: groupId });
+        },
+
+        // PUBLIC_INTERFACE
+        moveSkillFactory(groupId, direction) {
+          /** Reorder Skill Factory groups. direction: -1 up, +1 down. */
+          dispatch({ type: 'MOVE_SKILL_FACTORY', payload: { groupId, direction } });
         },
 
         // PUBLIC_INTERFACE

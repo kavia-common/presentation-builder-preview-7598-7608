@@ -4,6 +4,7 @@ import FieldRenderer from './FieldRenderer';
 import PreviewCarousel from '../preview/PreviewCarousel';
 import DownloadActions from '../actions/DownloadActions';
 import { useWizard } from '../../state/wizardContext';
+import { buildTemplateIndex } from '../../services/schemaLoader';
 
 function groupSteps(orderedSlides) {
   const globalFirst = orderedSlides.find((s) => s.slideType === 'global_first');
@@ -26,7 +27,29 @@ function groupSteps(orderedSlides) {
   return { globalFirst, groups, globalLast };
 }
 
-function Sidebar({ globalFirst, groups, globalLast, currentStep, previewStepIndex, onSelect, onAdd, onRemove, canRemove }) {
+function flowLabelForSubstep(step) {
+  // Ensures sidebar substep label matches required SF-1..SF-4 naming.
+  const type = step.slideType;
+  if (type === 'sf1') return 'SF-1';
+  if (type === 'sf2') return 'SF-2';
+  if (type === 'sf3') return 'SF-3';
+  if (type === 'sf4') return 'SF-4';
+  return step.title;
+}
+
+function Sidebar({
+  globalFirst,
+  groups,
+  globalLast,
+  currentStep,
+  previewStepIndex,
+  onSelect,
+  onAdd,
+  onRemove,
+  onMove,
+  canRemove,
+  canReorder,
+}) {
   return (
     <div className="ocean-card" style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -49,19 +72,39 @@ function Sidebar({ globalFirst, groups, globalLast, currentStep, previewStepInde
           </button>
         )}
 
-        {groups.map((g) => (
+        {groups.map((g, idx) => (
           <div key={g.groupId} className="ocean-card" style={{ padding: 12, borderRadius: 12, borderStyle: 'dashed' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
               <div style={{ fontWeight: 800, fontSize: 13 }}>{g.label}</div>
-              <button
-                type="button"
-                className="ocean-btn ocean-btn-danger"
-                onClick={() => onRemove(g.groupId)}
-                disabled={!canRemove}
-                title={canRemove ? 'Remove this group' : 'At least one Skill Factory is recommended'}
-              >
-                Remove
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="ocean-btn ocean-btn-ghost"
+                  onClick={() => onMove(g.groupId, -1)}
+                  disabled={!canReorder || idx === 0}
+                  title="Move up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="ocean-btn ocean-btn-ghost"
+                  onClick={() => onMove(g.groupId, 1)}
+                  disabled={!canReorder || idx === groups.length - 1}
+                  title="Move down"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  className="ocean-btn ocean-btn-danger"
+                  onClick={() => onRemove(g.groupId)}
+                  disabled={!canRemove}
+                  title={canRemove ? 'Remove this group' : 'At least one Skill Factory is recommended'}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
@@ -105,20 +148,13 @@ function Sidebar({ globalFirst, groups, globalLast, currentStep, previewStepInde
   );
 }
 
-function flowLabelForSubstep(step) {
-  // Ensures sidebar substep label matches required SF-1..SF-4 naming.
-  const type = step.slideType;
-  if (type === 'sf1') return 'SF-1';
-  if (type === 'sf2') return 'SF-2';
-  if (type === 'sf3') return 'SF-3';
-  if (type === 'sf4') return 'SF-4';
-  return step.title;
-}
-
 // PUBLIC_INTERFACE
 export default function WizardLayout() {
   /** Main wizard page: template-driven grouped wizard + preview + download actions. */
   const { state, actions } = useWizard();
+
+  const templateIndex = useMemo(() => buildTemplateIndex(state.templateModel, state.extractedTemplate), [state.templateModel, state.extractedTemplate]);
+  const templateDrivenPositioningActive = Boolean(templateIndex?.isTemplatePositioningActive);
 
   if (state.status === 'loading' || state.status === 'idle') {
     return (
@@ -177,13 +213,11 @@ export default function WizardLayout() {
   // Map stepper index -> wizard step index
   const stepperIndexToWizardStep = useMemo(() => {
     const map = [];
-    let ptr = 0;
     map.push(0); // global first -> first ordered slide
 
     const factories = groups || [];
     for (const g of factories) {
       for (const s of g.steps) {
-        ptr += 1;
         map.push(s.stepIndex);
       }
     }
@@ -197,6 +231,7 @@ export default function WizardLayout() {
   }, [groups, globalLast, previewStepIndex]);
 
   const canRemove = (state.wizardData?.skillFactories?.length || 0) > 1;
+  const canReorder = (state.wizardData?.skillFactories?.length || 0) > 1;
 
   return (
     <div className="ocean-app">
@@ -205,6 +240,10 @@ export default function WizardLayout() {
           <div>
             <h1 className="ocean-title">Presentation Builder</h1>
             <p className="ocean-subtitle">Template-driven wizard → live preview → PPT download (client-side).</p>
+            <div className="ocean-help">
+              Template-driven positioning:{' '}
+              <span className="ocean-kbd">{templateDrivenPositioningActive ? 'active' : 'fallback'}</span>
+            </div>
           </div>
           <div className="ocean-toolbar" aria-label="Global actions">
             <button type="button" className="ocean-btn ocean-btn-ghost" onClick={actions.restoreDefaults}>
@@ -233,7 +272,9 @@ export default function WizardLayout() {
               onSelect={actions.setStep}
               onAdd={actions.addSkillFactory}
               onRemove={actions.removeSkillFactory}
+              onMove={actions.moveSkillFactory}
               canRemove={canRemove}
+              canReorder={canReorder}
             />
 
             {!isPreview && (
@@ -276,6 +317,31 @@ export default function WizardLayout() {
                     </div>
                   )}
 
+                  {!showPartialBanner && !templateDrivenPositioningActive && (
+                    <div className="ocean-banner" role="status" aria-live="polite" style={{ marginBottom: 12 }}>
+                      <div>
+                        <strong>Template-driven positioning not available</strong>
+                        <div style={{ fontSize: 13, marginTop: 4 }}>
+                          Extracted template JSON is minimal. Preview and PPT generation are using fallback coordinates.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(state.previewGateErrors || []).length > 0 && (
+                    <div className="ocean-error" role="alert" style={{ marginBottom: 12 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Preview is blocked:</div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {state.previewGateErrors.map((e) => (
+                          <li key={e}>{e}</li>
+                        ))}
+                      </ul>
+                      <div className="ocean-help" style={{ marginTop: 8 }}>
+                        Fill required fields, then click Preview again.
+                      </div>
+                    </div>
+                  )}
+
                   <DownloadActions />
                 </div>
               ) : (
@@ -288,11 +354,7 @@ export default function WizardLayout() {
 
                       return (
                         <div key={f.id}>
-                          <FieldRenderer
-                            field={f}
-                            value={resolveFieldValue(state.wizardData, stepData, f.id)}
-                            onChange={(val) => actions.setFieldForStep(stepData, f.id, val)}
-                          />
+                          <FieldRenderer field={f} value={resolveFieldValue(state.wizardData, stepData, f.id)} onChange={(val) => actions.setFieldForStep(stepData, f.id, val)} />
                           {localError && <div className="ocean-error" role="alert">{localError}</div>}
                         </div>
                       );
@@ -330,6 +392,7 @@ export default function WizardLayout() {
               <PreviewCarousel
                 orderedSlides={orderedSlides}
                 templateModel={state.templateModel}
+                extractedTemplate={state.extractedTemplate}
                 wizardData={state.wizardData}
                 currentWizardStep={state.currentStep}
               />

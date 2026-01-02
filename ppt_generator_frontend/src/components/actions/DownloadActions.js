@@ -32,7 +32,7 @@ export default function DownloadActions() {
   return (
     <div>
       <div className="ocean-help" style={{ marginBottom: 10 }}>
-        PPT generation is fully client-side. If template coordinates are incomplete, content is still mapped using stable placeholder IDs.
+        Template-driven positioning active when extracted coordinates exist; otherwise a safe fallback layout is used. Placeholder IDs remain stable.
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -45,7 +45,7 @@ export default function DownloadActions() {
             try {
               const { blob, fileName } = await generatePptx({
                 templateModel: state.templateModel,
-                flowSchema: state.flowSchema,
+                extractedTemplate: state.extractedTemplate,
                 orderedSlides: state.orderedSlides,
                 wizardData: state.wizardData,
               });
