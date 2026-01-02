@@ -2,18 +2,18 @@ import React, { useMemo, useState } from 'react';
 import SlidePreview from './SlidePreview';
 
 // PUBLIC_INTERFACE
-export default function PreviewCarousel({ wizardSchema, templateModel, formData, currentWizardStep }) {
-  /** Slide-by-slide preview with navigation. */
-  const slides = useMemo(() => (Array.isArray(wizardSchema?.slides) ? wizardSchema.slides : []), [wizardSchema]);
+export default function PreviewCarousel({ orderedSlides, templateModel, wizardData, currentWizardStep }) {
+  /** Slide-by-slide preview with navigation, driven by the actual ordered flow steps. */
+  const slides = useMemo(() => (Array.isArray(orderedSlides) ? orderedSlides : []), [orderedSlides]);
   const [idx, setIdx] = useState(0);
 
-  // If user is on a slide step, sync preview to that slide index
+  // If user is on a slide step, sync preview to that slide index (ignore Preview step)
   React.useEffect(() => {
     if (currentWizardStep >= 0 && currentWizardStep < slides.length) setIdx(currentWizardStep);
   }, [currentWizardStep, slides.length]);
 
   if (!slides.length) {
-    return <div className="ocean-help">No slides in wizard schema.</div>;
+    return <div className="ocean-help">No slides in current flow.</div>;
   }
 
   const current = slides[idx];
@@ -47,7 +47,7 @@ export default function PreviewCarousel({ wizardSchema, templateModel, formData,
         </button>
       </div>
 
-      <SlidePreview slideStep={current} templateModel={templateModel} formData={formData} />
+      <SlidePreview slideStep={current} templateModel={templateModel} wizardData={wizardData} />
     </div>
   );
 }

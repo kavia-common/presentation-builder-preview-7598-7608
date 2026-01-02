@@ -21,9 +21,13 @@ export default function DownloadActions() {
   const [error, setError] = useState(null);
 
   const title = useMemo(() => {
-    const t = state.formData?.title || state.formData?.deckTitle || state.formData?.presentationTitle;
+    const t =
+      state.wizardData?.globalFirst?.title ||
+      state.formData?.title ||
+      state.formData?.deckTitle ||
+      state.formData?.presentationTitle;
     return typeof t === 'string' ? t : '';
-  }, [state.formData]);
+  }, [state.wizardData, state.formData]);
 
   return (
     <div>
@@ -41,8 +45,9 @@ export default function DownloadActions() {
             try {
               const { blob, fileName } = await generatePptx({
                 templateModel: state.templateModel,
-                wizardSchema: state.wizardSchema,
-                formData: state.formData,
+                flowSchema: state.flowSchema,
+                orderedSlides: state.orderedSlides,
+                wizardData: state.wizardData,
               });
               downloadBlob(blob, fileName);
               setStatus('done');

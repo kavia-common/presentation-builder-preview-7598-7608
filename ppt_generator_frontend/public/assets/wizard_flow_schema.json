@@ -1,0 +1,131 @@
+{
+  "version": "1.0",
+  "title": "Wizard Flow Schema (Template-driven)",
+  "description": "Defines slide types used by the wizard: global_first, sf1..sf4, global_last. Field sets + placeholder IDs are intentionally minimal and meant to be extended by the user later.",
+  "slideTypes": {
+    "global_first": {
+      "label": "Global First",
+      "layoutId": "global_first",
+      "fields": [
+        {
+          "id": "title",
+          "label": "Deck Title",
+          "type": "string",
+          "defaultValue": "",
+          "validation": { "required": true, "maxLength": 120 },
+          "mapping": { "placeholderId": "GF_TITLE" }
+        },
+        {
+          "id": "subtitle",
+          "label": "Subtitle",
+          "type": "string",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLength": 160 },
+          "mapping": { "placeholderId": "GF_SUBTITLE" }
+        }
+      ]
+    },
+    "sf1": {
+      "label": "SF-1",
+      "layoutId": "sf1",
+      "fields": [
+        {
+          "id": "heading",
+          "label": "Heading",
+          "type": "string",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLength": 120 },
+          "mapping": { "placeholderId": "SF1_HEADING" }
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "type": "richText",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLines": 10 },
+          "mapping": { "placeholderId": "SF1_BODY" }
+        }
+      ]
+    },
+    "sf2": {
+      "label": "SF-2",
+      "layoutId": "sf2",
+      "fields": [
+        {
+          "id": "heading",
+          "label": "Heading",
+          "type": "string",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLength": 120 },
+          "mapping": { "placeholderId": "SF2_HEADING" }
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "type": "richText",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLines": 10 },
+          "mapping": { "placeholderId": "SF2_BODY" }
+        }
+      ]
+    },
+    "sf3": {
+      "label": "SF-3",
+      "layoutId": "sf3",
+      "fields": [
+        {
+          "id": "heading",
+          "label": "Heading",
+          "type": "string",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLength": 120 },
+          "mapping": { "placeholderId": "SF3_HEADING" }
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "type": "richText",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLines": 10 },
+          "mapping": { "placeholderId": "SF3_BODY" }
+        }
+      ]
+    },
+    "sf4": {
+      "label": "SF-4",
+      "layoutId": "sf4",
+      "fields": [
+        {
+          "id": "heading",
+          "label": "Heading",
+          "type": "string",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLength": 120 },
+          "mapping": { "placeholderId": "SF4_HEADING" }
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "type": "richText",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLines": 10 },
+          "mapping": { "placeholderId": "SF4_BODY" }
+        }
+      ]
+    },
+    "global_last": {
+      "label": "Global Last",
+      "layoutId": "global_last",
+      "fields": [
+        {
+          "id": "closingText",
+          "label": "Closing Text",
+          "type": "string",
+          "defaultValue": "",
+          "validation": { "required": false, "maxLength": 160 },
+          "mapping": { "placeholderId": "GL_CLOSING" }
+        }
+      ]
+    }
+  }
+}

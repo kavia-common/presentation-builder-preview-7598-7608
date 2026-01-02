@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
+import { loadWizardFlowSchema, getFieldsForSlideType } from '../services/schemaLoader';
 
-const STORAGE_KEY = 'ppt_wizard_draft_v1';
+const STORAGE_KEY = 'ppt_wizard_draft_v2_grouped';
 
 function safeJsonParse(str) {
   try {
@@ -10,31 +11,185 @@ function safeJsonParse(str) {
   }
 }
 
-function buildDefaultFormData(wizardSchema) {
-  const slides = Array.isArray(wizardSchema?.slides) ? wizardSchema.slides : [];
+function makeId() {
+  return `sf_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+}
+
+function buildEmptySlideData(flowSchema, slideType) {
   const data = {};
-  for (const s of slides) {
-    const sections = Array.isArray(s.sections) ? s.sections : [];
-    for (const sec of sections) {
-      const fields = Array.isArray(sec.fields) ? sec.fields : [];
-      for (const f of fields) {
-        if (f?.id) data[f.id] = f.defaultValue ?? (f.type === 'image' ? null : '');
-      }
+  const fields = getFieldsForSlideType(flowSchema, slideType);
+  for (const f of fields) {
+    if (!f?.id) continue;
+    data[f.id] = f.defaultValue ?? (f.type === 'image' ? null : '');
+  }
+  return data;
+}
+
+function buildDefaultWizardData(flowSchema) {
+  return {
+    globalFirst: buildEmptySlideData(flowSchema, 'global_first'),
+    skillFactories: [
+      {
+        id: makeId(),
+        slides: {
+          sf1: buildEmptySlideData(flowSchema, 'sf1'),
+          sf2: buildEmptySlideData(flowSchema, 'sf2'),
+          sf3: buildEmptySlideData(flowSchema, 'sf3'),
+          sf4: buildEmptySlideData(flowSchema, 'sf4'),
+        },
+      },
+    ],
+    globalLast: buildEmptySlideData(flowSchema, 'global_last'),
+  };
+}
+
+function validateValue(field, value) {
+  const v = field?.validation || {};
+  const errors = [];
+
+  if (v.required) {
+    const empty = value == null || value === '' || (Array.isArray(value) && value.length === 0);
+    if (empty) errors.push('This field is required.');
+  }
+
+  if (typeof value === 'string') {
+    if (typeof v.minLength === 'number' && value.length < v.minLength) errors.push(`Must be at least ${v.minLength} characters.`);
+    if (typeof v.maxLength === 'number' && value.length > v.maxLength) errors.push(`Must be at most ${v.maxLength} characters.`);
+    if (typeof v.maxLines === 'number') {
+      const lines = value.split('\n').length;
+      if (lines > v.maxLines) errors.push(`Must be at most ${v.maxLines} lines.`);
     }
   }
-  // Common title fallback used for file naming
-  if (data.title == null) data.title = '';
-  return data;
+
+  if (typeof value === 'number') {
+    if (typeof v.min === 'number' && value < v.min) errors.push(`Must be ≥ ${v.min}.`);
+    if (typeof v.max === 'number' && value > v.max) errors.push(`Must be ≤ ${v.max}.`);
+  }
+
+  return errors;
+}
+
+// PUBLIC_INTERFACE
+export function buildOrderedSlides(flowSchema, wizardData) {
+  /**
+   * Build the ordered slide list required by the template-driven flow:
+   * [global_first] + for each skillFactory [sf1..sf4] + [global_last].
+   *
+   * Returns an array of "step objects" used by WizardLayout + preview + generation.
+   */
+  const steps = [];
+
+  steps.push({
+    key: 'global_first',
+    kind: 'global',
+    slideType: 'global_first',
+    title: flowSchema?.slideTypes?.global_first?.label || 'Global First',
+    layoutId: flowSchema?.slideTypes?.global_first?.layoutId || 'global_first',
+    fields: getFieldsForSlideType(flowSchema, 'global_first'),
+    dataPath: { scope: 'globalFirst' },
+  });
+
+  const factories = Array.isArray(wizardData?.skillFactories) ? wizardData.skillFactories : [];
+  factories.forEach((sf, idx) => {
+    const groupLabel = `Skill Factory ${idx + 1}`;
+    (['sf1', 'sf2', 'sf3', 'sf4'] || []).forEach((sft) => {
+      steps.push({
+        key: `${sf.id}:${sft}`,
+        kind: 'skillFactory',
+        groupId: sf.id,
+        groupIndex: idx,
+        groupLabel,
+        slideType: sft,
+        title: `${groupLabel} — ${flowSchema?.slideTypes?.[sft]?.label || sft.toUpperCase()}`,
+        layoutId: flowSchema?.slideTypes?.[sft]?.layoutId || sft,
+        fields: getFieldsForSlideType(flowSchema, sft),
+        dataPath: { scope: 'skillFactories', groupId: sf.id, slideKey: sft },
+      });
+    });
+  });
+
+  steps.push({
+    key: 'global_last',
+    kind: 'global',
+    slideType: 'global_last',
+    title: flowSchema?.slideTypes?.global_last?.label || 'Global Last',
+    layoutId: flowSchema?.slideTypes?.global_last?.layoutId || 'global_last',
+    fields: getFieldsForSlideType(flowSchema, 'global_last'),
+    dataPath: { scope: 'globalLast' },
+  });
+
+  return steps;
+}
+
+function getStepValue(wizardData, step, fieldId) {
+  if (!step?.dataPath) return undefined;
+
+  if (step.dataPath.scope === 'globalFirst') return wizardData?.globalFirst?.[fieldId];
+  if (step.dataPath.scope === 'globalLast') return wizardData?.globalLast?.[fieldId];
+
+  if (step.dataPath.scope === 'skillFactories') {
+    const group = (wizardData?.skillFactories || []).find((g) => g.id === step.dataPath.groupId);
+    return group?.slides?.[step.dataPath.slideKey]?.[fieldId];
+  }
+
+  return undefined;
+}
+
+function setStepValue(wizardData, step, fieldId, value) {
+  if (step.dataPath.scope === 'globalFirst') {
+    return { ...wizardData, globalFirst: { ...(wizardData.globalFirst || {}), [fieldId]: value } };
+  }
+  if (step.dataPath.scope === 'globalLast') {
+    return { ...wizardData, globalLast: { ...(wizardData.globalLast || {}), [fieldId]: value } };
+  }
+  if (step.dataPath.scope === 'skillFactories') {
+    const nextFactories = (wizardData.skillFactories || []).map((g) => {
+      if (g.id !== step.dataPath.groupId) return g;
+      const prevSlides = g.slides || {};
+      const prevSlideData = prevSlides[step.dataPath.slideKey] || {};
+      return {
+        ...g,
+        slides: { ...prevSlides, [step.dataPath.slideKey]: { ...prevSlideData, [fieldId]: value } },
+      };
+    });
+    return { ...wizardData, skillFactories: nextFactories };
+  }
+  return wizardData;
+}
+
+function validateStep(flowSchema, wizardData, step) {
+  const fields = Array.isArray(step?.fields) ? step.fields : [];
+  const errorsByField = {};
+  for (const f of fields) {
+    const v = getStepValue(wizardData, step, f.id);
+    const errs = validateValue(f, v);
+    if (errs.length) errorsByField[f.id] = errs;
+  }
+  return errorsByField;
 }
 
 const initialState = {
   status: 'idle', // idle | loading | ready | error
   error: null,
+
+  // Legacy schemas retained for non-breaking change
   wizardSchema: null,
   templateModel: null,
-  currentStep: 0, // 0..slides.length (last is Preview)
-  formData: {},
+
+  // New flow schema
+  flowSchema: null,
+
+  // New grouped data model
+  wizardData: null,
+
+  currentStep: 0, // 0..orderedSlides.length (preview is last+1)
   refinedLaterNote: false,
+
+  // Validation cache for inline display
+  validation: {
+    touched: {}, // stepKey -> true
+    errors: {}, // stepKey -> {fieldId: [errs]}
+  },
 };
 
 function reducer(state, action) {
@@ -48,20 +203,82 @@ function reducer(state, action) {
         error: null,
         wizardSchema: action.payload.wizardSchema,
         templateModel: action.payload.templateModel,
-        formData: action.payload.formData,
+        flowSchema: action.payload.flowSchema,
+        wizardData: action.payload.wizardData,
+        currentStep: action.payload.currentStep,
       };
     case 'LOAD_ERROR':
       return { ...state, status: 'error', error: action.payload };
+
     case 'SET_STEP':
       return { ...state, currentStep: action.payload };
-    case 'SET_FIELD':
-      return { ...state, formData: { ...state.formData, [action.payload.id]: action.payload.value } };
+
+    case 'SET_WIZARD_DATA':
+      return { ...state, wizardData: action.payload };
+
+    case 'ADD_SKILL_FACTORY': {
+      const sf = {
+        id: makeId(),
+        slides: {
+          sf1: buildEmptySlideData(state.flowSchema, 'sf1'),
+          sf2: buildEmptySlideData(state.flowSchema, 'sf2'),
+          sf3: buildEmptySlideData(state.flowSchema, 'sf3'),
+          sf4: buildEmptySlideData(state.flowSchema, 'sf4'),
+        },
+      };
+      const next = { ...state.wizardData, skillFactories: [...(state.wizardData?.skillFactories || []), sf] };
+      return { ...state, wizardData: next };
+    }
+
+    case 'REMOVE_SKILL_FACTORY': {
+      const groupId = action.payload;
+      const nextFactories = (state.wizardData?.skillFactories || []).filter((g) => g.id !== groupId);
+      const next = { ...state.wizardData, skillFactories: nextFactories.length ? nextFactories : [] };
+      return { ...state, wizardData: next };
+    }
+
+    case 'SET_FIELD_FOR_STEP': {
+      const { step, fieldId, value } = action.payload;
+      const nextData = setStepValue(state.wizardData, step, fieldId, value);
+      return { ...state, wizardData: nextData };
+    }
+
+    case 'TOUCH_STEP': {
+      const stepKey = action.payload;
+      return {
+        ...state,
+        validation: {
+          ...state.validation,
+          touched: { ...state.validation.touched, [stepKey]: true },
+        },
+      };
+    }
+
+    case 'SET_STEP_ERRORS': {
+      const { stepKey, errors } = action.payload;
+      return {
+        ...state,
+        validation: {
+          ...state.validation,
+          errors: { ...state.validation.errors, [stepKey]: errors },
+        },
+      };
+    }
+
     case 'RESTORE_DEFAULTS':
-      return { ...state, formData: action.payload.formData };
-    case 'CLEAR_ALL':
-      return { ...state, formData: action.payload.formData };
+      return { ...state, wizardData: action.payload.wizardData, validation: initialState.validation };
+
+    case 'CLEAR_ALL': {
+      // Clear to empty values but keep structure.
+      const cleared = buildDefaultWizardData(state.flowSchema);
+      // Ensure title exists for filename, even if schema changes.
+      if (cleared?.globalFirst?.title == null) cleared.globalFirst.title = '';
+      return { ...state, wizardData: cleared, validation: initialState.validation };
+    }
+
     case 'SET_REFINE_LATER':
       return { ...state, refinedLaterNote: true };
+
     default:
       return state;
   }
@@ -81,14 +298,14 @@ export function WizardProvider({ children, loadSchemas }) {
     async function run() {
       dispatch({ type: 'LOAD_START' });
       try {
-        const { wizardSchema, templateModel } = await loadSchemas();
-        const defaults = buildDefaultFormData(wizardSchema);
+        const [{ wizardSchema, templateModel }, flowSchema] = await Promise.all([loadSchemas(), loadWizardFlowSchema()]);
+        const defaults = buildDefaultWizardData(flowSchema);
 
         const stored = safeJsonParse(localStorage.getItem(STORAGE_KEY) || '');
-        const storedData = stored?.formData && typeof stored.formData === 'object' ? stored.formData : {};
+        const storedData = stored?.wizardData && typeof stored.wizardData === 'object' ? stored.wizardData : null;
         const storedStep = Number.isFinite(stored?.currentStep) ? stored.currentStep : 0;
 
-        const merged = { ...defaults, ...storedData };
+        const merged = storedData ? { ...defaults, ...storedData } : defaults;
 
         if (!cancelled) {
           dispatch({
@@ -96,11 +313,11 @@ export function WizardProvider({ children, loadSchemas }) {
             payload: {
               wizardSchema,
               templateModel,
-              formData: merged,
+              flowSchema,
+              wizardData: merged,
               currentStep: storedStep,
             },
           });
-          if (Number.isFinite(storedStep)) dispatch({ type: 'SET_STEP', payload: storedStep });
         }
       } catch (e) {
         if (!cancelled) dispatch({ type: 'LOAD_ERROR', payload: String(e?.message || e) });
@@ -116,57 +333,115 @@ export function WizardProvider({ children, loadSchemas }) {
   // Persist draft
   useEffect(() => {
     if (state.status !== 'ready') return;
-    const payload = { formData: state.formData, currentStep: state.currentStep };
+    const payload = { wizardData: state.wizardData, currentStep: state.currentStep };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [state.status, state.formData, state.currentStep]);
+  }, [state.status, state.wizardData, state.currentStep]);
 
   const api = useMemo(() => {
+    const orderedSlides = state.flowSchema && state.wizardData ? buildOrderedSlides(state.flowSchema, state.wizardData) : [];
+    const previewStepIndex = orderedSlides.length;
+
+    function canGoToStep(targetStep) {
+      // Allow moving among form steps freely; Preview is gated by validation.
+      if (targetStep < previewStepIndex) return true;
+      if (targetStep !== previewStepIndex) return false;
+
+      // Validate all steps before preview.
+      for (const step of orderedSlides) {
+        const errs = validateStep(state.flowSchema, state.wizardData, step);
+        if (Object.keys(errs).length) return false;
+      }
+      return true;
+    }
+
+    function markAndValidateStep(step) {
+      dispatch({ type: 'TOUCH_STEP', payload: step.key });
+      const errs = validateStep(state.flowSchema, state.wizardData, step);
+      dispatch({ type: 'SET_STEP_ERRORS', payload: { stepKey: step.key, errors: errs } });
+      return errs;
+    }
+
     return {
-      state,
+      state: {
+        ...state,
+        orderedSlides,
+        previewStepIndex,
+      },
       dispatch,
       actions: {
         // PUBLIC_INTERFACE
         setStep(step) {
-          /** Set current wizard step (0..N). */
-          dispatch({ type: 'SET_STEP', payload: step });
+          /** Set current wizard step (0..N). Preview is gated by validation. */
+          if (canGoToStep(step)) {
+            dispatch({ type: 'SET_STEP', payload: step });
+            return;
+          }
+
+          // If trying to go to preview but blocked, touch+validate all steps to show inline errors.
+          for (const s of orderedSlides) markAndValidateStep(s);
         },
+
         // PUBLIC_INTERFACE
         next() {
-          /** Go to next step if possible. */
-          const max = (state.wizardSchema?.slides?.length || 0); // preview is max index
-          dispatch({ type: 'SET_STEP', payload: Math.min(state.currentStep + 1, max) });
+          /** Go to next step if possible. Validates current step before advancing (and blocks preview). */
+          const current = state.currentStep;
+          const max = previewStepIndex; // preview is max index
+          const currentIsPreview = current === previewStepIndex;
+
+          if (currentIsPreview) return;
+
+          const stepObj = orderedSlides[current];
+          const errs = stepObj ? markAndValidateStep(stepObj) : {};
+          if (Object.keys(errs).length) return;
+
+          const nextStep = Math.min(current + 1, max);
+          if (canGoToStep(nextStep)) dispatch({ type: 'SET_STEP', payload: nextStep });
         },
+
         // PUBLIC_INTERFACE
         back() {
           /** Go to previous step if possible. */
           dispatch({ type: 'SET_STEP', payload: Math.max(state.currentStep - 1, 0) });
         },
+
         // PUBLIC_INTERFACE
-        setField(id, value) {
-          /** Update one field in the draft. */
-          dispatch({ type: 'SET_FIELD', payload: { id, value } });
+        setFieldForStep(step, fieldId, value) {
+          /** Update one field in nested wizard data for a given ordered slide step. */
+          dispatch({ type: 'SET_FIELD_FOR_STEP', payload: { step, fieldId, value } });
+
+          // If the step was touched before, revalidate live for inline errors.
+          if (state.validation.touched?.[step.key]) {
+            const nextWizardData = setStepValue(state.wizardData, step, fieldId, value);
+            const errs = validateStep(state.flowSchema, nextWizardData, step);
+            dispatch({ type: 'SET_STEP_ERRORS', payload: { stepKey: step.key, errors: errs } });
+          }
         },
+
+        // PUBLIC_INTERFACE
+        addSkillFactory() {
+          /** Append a new Skill Factory group (4 slides). */
+          dispatch({ type: 'ADD_SKILL_FACTORY' });
+        },
+
+        // PUBLIC_INTERFACE
+        removeSkillFactory(groupId) {
+          /** Remove an existing Skill Factory group by id. */
+          dispatch({ type: 'REMOVE_SKILL_FACTORY', payload: groupId });
+        },
+
         // PUBLIC_INTERFACE
         restoreDefaults() {
-          /** Restore defaults for all fields (schema-defined defaultValue). */
-          const defaults = buildDefaultFormData(state.wizardSchema);
-          dispatch({ type: 'RESTORE_DEFAULTS', payload: { formData: defaults } });
+          /** Restore defaults for all slide fields from flow schema. */
+          const defaults = buildDefaultWizardData(state.flowSchema);
+          dispatch({ type: 'RESTORE_DEFAULTS', payload: { wizardData: defaults } });
         },
+
         // PUBLIC_INTERFACE
         clearAll() {
-          /** Clear all user-entered values (sets strings to '', images to null). */
-          const slides = Array.isArray(state.wizardSchema?.slides) ? state.wizardSchema.slides : [];
-          const cleared = {};
-          for (const s of slides) {
-            for (const sec of s.sections || []) {
-              for (const f of sec.fields || []) {
-                cleared[f.id] = f.type === 'image' ? null : '';
-              }
-            }
-          }
-          if (cleared.title == null) cleared.title = '';
-          dispatch({ type: 'CLEAR_ALL', payload: { formData: cleared } });
+          /** Clear all user-entered values (sets strings to '', images to null) but preserves structure. */
+          dispatch({ type: 'CLEAR_ALL' });
         },
+
         // PUBLIC_INTERFACE
         markRefineLater() {
           /** Mark that user wants to refine template later (UI-only placeholder for future workflow). */

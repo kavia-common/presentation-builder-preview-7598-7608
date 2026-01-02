@@ -26,12 +26,29 @@ function fallbackBoxesForFields(fields) {
   }));
 }
 
+function resolveValueForStep(wizardData, slideStep, fieldId) {
+  const p = slideStep?.dataPath;
+  if (!p) return undefined;
+
+  if (p.scope === 'globalFirst') return wizardData?.globalFirst?.[fieldId];
+  if (p.scope === 'globalLast') return wizardData?.globalLast?.[fieldId];
+
+  if (p.scope === 'skillFactories') {
+    const group = (wizardData?.skillFactories || []).find((g) => g.id === p.groupId);
+    return group?.slides?.[p.slideKey]?.[fieldId];
+  }
+
+  return undefined;
+}
+
 // PUBLIC_INTERFACE
-export default function SlidePreview({ slideStep, templateModel, formData }) {
+export default function SlidePreview({ slideStep, templateModel, wizardData }) {
   /** Render one slide preview as absolutely positioned boxes approximating PPT coordinates. */
   const page = useMemo(() => getPageSize(templateModel), [templateModel]);
 
   const fields = useMemo(() => {
+    // New flow uses slideStep.fields (already flattened), but keep compatibility fallback.
+    if (Array.isArray(slideStep?.fields)) return slideStep.fields;
     const out = [];
     for (const sec of slideStep?.sections || []) {
       for (const f of sec?.fields || []) out.push(f);
@@ -57,7 +74,7 @@ export default function SlidePreview({ slideStep, templateModel, formData }) {
         {placeholders.map((ph) => {
           const rect = ph.box ? scaleRect(ph.box, page) : { left: '5%', top: '5%', width: '90%', height: '12%' };
           const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
-          const value = mappedField ? formData?.[mappedField.id] : null;
+          const value = mappedField ? resolveValueForStep(wizardData, slideStep, mappedField.id) : null;
 
           const labelText =
             ph.kind === 'image'
