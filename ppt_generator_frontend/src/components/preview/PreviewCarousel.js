@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import SlidePreview from './SlidePreview';
 
 // PUBLIC_INTERFACE
@@ -8,7 +8,7 @@ export default function PreviewCarousel({ orderedSlides, templateModel, extracte
   const [idx, setIdx] = useState(0);
 
   // If user is on a slide step, sync preview to that slide index (ignore Preview step)
-  React.useEffect(() => {
+  useEffect(() => {
     if (currentWizardStep >= 0 && currentWizardStep < slides.length) setIdx(currentWizardStep);
   }, [currentWizardStep, slides.length]);
 
