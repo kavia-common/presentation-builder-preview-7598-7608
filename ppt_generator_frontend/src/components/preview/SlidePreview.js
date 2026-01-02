@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   buildTemplateIndex,
   getLayout,
@@ -151,9 +151,40 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   const fontFamily = templateFontStack(templateModel?.theme?.fonts);
   const textColor = templateTextColor(templateModel?.theme?.colors);
 
+  // Render extracted layout background as an image when available.
+  const backgroundUrl = useMemo(() => {
+    if (!layout?.background?.assetId) return null;
+    return resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
+  }, [layout, templateIndex]);
+
+  // Avoid leaking object URLs when user provides images (File inputs).
+  const [objectUrlByPlaceholderId, setObjectUrlByPlaceholderId] = useState({});
+
+  useEffect(() => {
+    // Cleanup all object URLs when slide changes/unmounts.
+    return () => {
+      for (const url of Object.values(objectUrlByPlaceholderId)) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore
+        }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slideStep?.key]);
+
   return (
     <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>
       <div className="ocean-slide-layer" style={{ fontFamily, color: textColor }}>
+        {backgroundUrl && (
+          <img
+            src={backgroundUrl}
+            alt="slide background"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }}
+          />
+        )}
+
         {warnings.length > 0 && (
           <div
             style={{
@@ -200,7 +231,23 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           const isImage = (precise?.kind || ph.kind) === 'image' || mappedField?.type === 'image';
 
           if (isImage) {
-            const img = value && typeof File !== 'undefined' && value instanceof File ? URL.createObjectURL(value) : null;
+            // Priority order for image rendering:
+            // 1) user-provided file
+            // 2) template default asset referenced by placeholder (if any)
+            const hasUserFile = value && typeof File !== 'undefined' && value instanceof File;
+
+            let src = null;
+            if (hasUserFile) {
+              src = objectUrlByPlaceholderId[ph.id] || null;
+              if (!src) {
+                const url = URL.createObjectURL(value);
+                setObjectUrlByPlaceholderId((prev) => ({ ...prev, [ph.id]: url }));
+                src = url;
+              }
+            } else if (precise?.assetId) {
+              src = resolveTemplateAssetUrl(templateIndex, precise.assetId);
+            }
+
             return (
               <div
                 key={ph.id}
@@ -213,8 +260,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                 }}
                 title={ph.id}
               >
-                {img ? (
-                  <img src={img} alt={ph.id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {src ? (
+                  <img src={src} alt={ph.id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <div className="shape-label">[{ph.id}] image</div>
                 )}
