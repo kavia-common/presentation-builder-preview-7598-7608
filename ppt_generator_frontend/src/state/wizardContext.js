@@ -1,6 +1,111 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
 import { buildCanonicalOrderedSlidesFromTemplate, loadWizardFlowSchema, getFieldsForSlideType } from '../services/schemaLoader';
 
+function pickFirstMatchingPlaceholderId(templateModel, candidates) {
+  const layouts = Array.isArray(templateModel?.layouts) ? templateModel.layouts : [];
+  for (const l of layouts) {
+    const phs = Array.isArray(l?.placeholders) ? l.placeholders : [];
+    for (const c of candidates) {
+      const found = phs.find((p) => p?.id === c);
+      if (found?.id) return found.id;
+    }
+  }
+  return null;
+}
+
+function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
+  /**
+   * Ensure Global First has dedicated form fields for common placeholders (title/subtitle/date/footer/logo)
+   * by detecting known placeholder ids in the extracted template bundle.
+   *
+   * IMPORTANT:
+   * - Do NOT alter layout/coordinates. Only map fields to already-existing placeholders.
+   * - If a placeholder doesn't exist, we simply don't add that field (preview will show a non-blocking warning if mapping points to a missing placeholder).
+   */
+  if (!flowSchema || typeof flowSchema !== 'object') return flowSchema;
+
+  const next = { ...flowSchema, slideTypes: { ...(flowSchema.slideTypes || {}) } };
+  const gf = next.slideTypes.global_first ? { ...next.slideTypes.global_first } : { label: 'Global First', layoutId: 'global_first', fields: [] };
+  const fields = Array.isArray(gf.fields) ? [...gf.fields] : [];
+
+  const existingById = new Map(fields.filter((f) => f?.id).map((f) => [f.id, f]));
+
+  const upsert = (field) => {
+    if (!field?.id) return;
+    if (existingById.has(field.id)) return; // keep existing UI/validation as-is
+    fields.push(field);
+    existingById.set(field.id, field);
+  };
+
+  // Detect common placeholders by stable IDs (template-extracted bundle is authoritative)
+  const gfTitlePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_TITLE', 'TITLE', 'TITLE_1', 'TITLE1']);
+  const gfSubtitlePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_SUBTITLE', 'SUBTITLE', 'SUBTITLE_1', 'SUBTITLE1']);
+  const gfDatePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_DATE', 'DATE', 'DATE_PLACEHOLDER', 'SLIDEDATE']);
+  const gfFooterPh = pickFirstMatchingPlaceholderId(templateModel, ['GF_FOOTER', 'FOOTER', 'FOOTER_TEXT', 'FOOTER_LEFT', 'FOOTER_CENTER', 'FOOTER_RIGHT']);
+  const gfLogoPh = pickFirstMatchingPlaceholderId(templateModel, ['GF_LOGO', 'LOGO', 'LOGO_1', 'COMPANY_LOGO']);
+
+  // Keep the existing schema-defined title/subtitle; add optional extras when present in template.
+  if (gfDatePh) {
+    upsert({
+      id: 'date',
+      label: 'Date',
+      type: 'date',
+      defaultValue: '',
+      validation: { required: false },
+      mapping: { placeholderId: gfDatePh },
+    });
+  }
+
+  if (gfFooterPh) {
+    upsert({
+      id: 'footer',
+      label: 'Footer',
+      type: 'string',
+      defaultValue: '',
+      validation: { required: false, maxLength: 200 },
+      mapping: { placeholderId: gfFooterPh },
+    });
+  }
+
+  if (gfLogoPh) {
+    upsert({
+      id: 'logo',
+      label: 'Logo',
+      type: 'image',
+      defaultValue: null,
+      validation: { required: false },
+      mapping: { placeholderId: gfLogoPh },
+    });
+  }
+
+  // If title/subtitle placeholders are missing or mapped differently, do NOT override existing mapping
+  // (we avoid surprising changes). But if schema is missing title/subtitle entirely, add them.
+  if (!existingById.has('title') && gfTitlePh) {
+    upsert({
+      id: 'title',
+      label: 'Deck Title',
+      type: 'string',
+      defaultValue: '',
+      validation: { required: true, maxLength: 120 },
+      mapping: { placeholderId: gfTitlePh },
+    });
+  }
+  if (!existingById.has('subtitle') && gfSubtitlePh) {
+    upsert({
+      id: 'subtitle',
+      label: 'Subtitle',
+      type: 'string',
+      defaultValue: '',
+      validation: { required: false, maxLength: 160 },
+      mapping: { placeholderId: gfSubtitlePh },
+    });
+  }
+
+  gf.fields = fields;
+  next.slideTypes.global_first = gf;
+  return next;
+}
+
 const STORAGE_KEY = 'ppt_wizard_draft_v2_grouped';
 
 function safeJsonParse(str) {
@@ -391,7 +496,11 @@ export function WizardProvider({ children, loadSchemas }) {
     async function run() {
       dispatch({ type: 'LOAD_START' });
       try {
-        const [{ wizardSchema, templateModel, extractedTemplate }, flowSchema] = await Promise.all([loadSchemas(), loadWizardFlowSchema()]);
+        const [{ wizardSchema, templateModel, extractedTemplate }, flowSchemaRaw] = await Promise.all([loadSchemas(), loadWizardFlowSchema()]);
+
+        // Enrich flow schema using extracted template placeholders (Global First extras: date/footer/logo).
+        const flowSchema = normalizeGlobalFirstFieldsFromTemplate(flowSchemaRaw, templateModel);
+
         const defaults = buildDefaultWizardData(flowSchema);
 
         const stored = safeJsonParse(localStorage.getItem(STORAGE_KEY) || '');

@@ -143,10 +143,31 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     return list;
   }, [layout]);
 
-  const warnings = useMemo(
+  const requiredWarnings = useMemo(
     () => validateSlideRequiredFields({ slideStep, wizardData, templateIndex }),
     [slideStep, wizardData, templateIndex]
   );
+
+  const missingPlaceholderWarnings = useMemo(() => {
+    const out = [];
+    const fs = Array.isArray(slideStep?.fields) ? slideStep.fields : [];
+    for (const f of fs) {
+      const placeholderId = f?.mapping?.placeholderId;
+      if (!placeholderId) continue;
+      const exists = Boolean(getTemplatePlaceholder(templateIndex, placeholderId));
+      if (!exists) {
+        out.push({
+          fieldId: f.id,
+          placeholderId,
+          kind: f.type === 'image' ? 'image' : 'text',
+          message: `Mapped placeholder not found in extracted template: ${placeholderId}`,
+        });
+      }
+    }
+    return out;
+  }, [slideStep, templateIndex]);
+
+  const warnings = useMemo(() => [...requiredWarnings, ...missingPlaceholderWarnings], [requiredWarnings, missingPlaceholderWarnings]);
 
   const fontFamily = templateFontStack(templateModel?.theme?.fonts);
   const textColor = templateTextColor(templateModel?.theme?.colors);
@@ -193,20 +214,20 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
               top: 10,
               right: 10,
               zIndex: 999,
-              background: 'rgba(239, 68, 68, 0.10)',
-              border: '1px solid rgba(239, 68, 68, 0.25)',
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
               borderRadius: 10,
               padding: '8px 10px',
-              color: '#991b1b',
+              color: '#92400e',
               fontSize: 12,
               fontWeight: 700,
             }}
             role="status"
             aria-live="polite"
           >
-            Missing required fields:
+            Preview warnings (non-blocking):
             <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontWeight: 600 }}>
-              {warnings.slice(0, 5).map((w) => (
+              {warnings.slice(0, 6).map((w) => (
                 <li key={`${w.fieldId}:${w.placeholderId || ''}`}>{w.message}</li>
               ))}
             </ul>
