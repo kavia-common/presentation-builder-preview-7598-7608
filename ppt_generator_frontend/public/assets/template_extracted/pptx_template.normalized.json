@@ -106,6 +106,22 @@
           "box": { "xPt": 61.53, "yPt": 312.08, "wPt": 318.65, "hPt": 71.34 },
           "zIndex": 21,
           "style": { "fontFamily": "Arial", "fontSizePt": 14, "fontWeight": 500, "color": "#111827", "align": "left" }
+        },
+        {
+          "id": "GF_TAGLINE",
+          "name": "slide1.object12",
+          "kind": "body",
+          "box": { "xPt": 61.53, "yPt": 289.20, "wPt": 318.65, "hPt": 18.0 },
+          "zIndex": 19,
+          "style": { "fontFamily": "Arial", "fontSizePt": 12, "fontWeight": 600, "color": "#111827", "align": "left" }
+        },
+        {
+          "id": "GF_DATE",
+          "name": "slide1.object11",
+          "kind": "body",
+          "box": { "xPt": 61.53, "yPt": 384.0, "wPt": 318.65, "hPt": 30.0 },
+          "zIndex": 22,
+          "style": { "fontFamily": "Arial", "fontSizePt": 11, "fontWeight": 500, "color": "#111827", "align": "left" }
         }
       ]
     },

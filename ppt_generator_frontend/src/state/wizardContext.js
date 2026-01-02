@@ -15,7 +15,7 @@ function pickFirstMatchingPlaceholderId(templateModel, candidates) {
 
 function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   /**
-   * Ensure Global First has dedicated form fields for common placeholders (title/subtitle/date/footer/logo)
+   * Ensure Global First has dedicated form fields for common placeholders (title/subtitle/tagline/date/footer/logo)
    * by detecting known placeholder ids in the extracted template bundle.
    *
    * IMPORTANT:
@@ -25,7 +25,9 @@ function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   if (!flowSchema || typeof flowSchema !== 'object') return flowSchema;
 
   const next = { ...flowSchema, slideTypes: { ...(flowSchema.slideTypes || {}) } };
-  const gf = next.slideTypes.global_first ? { ...next.slideTypes.global_first } : { label: 'Global First', layoutId: 'global_first', fields: [] };
+  const gf = next.slideTypes.global_first
+    ? { ...next.slideTypes.global_first }
+    : { label: 'Global First', layoutId: 'global_first', fields: [] };
   const fields = Array.isArray(gf.fields) ? [...gf.fields] : [];
 
   const existingById = new Map(fields.filter((f) => f?.id).map((f) => [f.id, f]));
@@ -40,11 +42,23 @@ function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   // Detect common placeholders by stable IDs (template-extracted bundle is authoritative)
   const gfTitlePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_TITLE', 'TITLE', 'TITLE_1', 'TITLE1']);
   const gfSubtitlePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_SUBTITLE', 'SUBTITLE', 'SUBTITLE_1', 'SUBTITLE1']);
+  const gfTaglinePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_TAGLINE', 'TAGLINE', 'TAGLINE_1', 'TAGLINE1']);
   const gfDatePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_DATE', 'DATE', 'DATE_PLACEHOLDER', 'SLIDEDATE']);
   const gfFooterPh = pickFirstMatchingPlaceholderId(templateModel, ['GF_FOOTER', 'FOOTER', 'FOOTER_TEXT', 'FOOTER_LEFT', 'FOOTER_CENTER', 'FOOTER_RIGHT']);
   const gfLogoPh = pickFirstMatchingPlaceholderId(templateModel, ['GF_LOGO', 'LOGO', 'LOGO_1', 'COMPANY_LOGO']);
 
   // Keep the existing schema-defined title/subtitle; add optional extras when present in template.
+  if (gfTaglinePh) {
+    upsert({
+      id: 'tagline',
+      label: 'Tagline',
+      type: 'string',
+      defaultValue: '',
+      validation: { required: false, maxLength: 140, maxLines: 2 },
+      mapping: { placeholderId: gfTaglinePh },
+    });
+  }
+
   if (gfDatePh) {
     upsert({
       id: 'date',
