@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Form Wizard Schema (Template)",
+  "type": "object",
+  "required": ["version", "slides"],
+  "properties": {
+    "version": { "type": "string", "default": "1.0" },
+    "slides": {
+      "type": "array",
+      "description": "One entry per slide in deck order.",
+      "items": {
+        "type": "object",
+        "required": ["slideIndex", "title", "layoutId", "sections"],
+        "properties": {
+          "slideIndex": { "type": "integer" },
+          "title": { "type": "string", "description": "Wizard step title, e.g., 'Slide 1 — Cover'" },
+          "layoutId": { "type": "string" },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "label", "fields"],
+              "properties": {
+                "id": { "type": "string" },
+                "label": { "type": "string" },
+                "description": { "type": "string" },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "label", "type", "mapping"],
+                    "properties": {
+                      "id": { "type": "string", "description": "Unique key used in form state" },
+                      "label": { "type": "string" },
+                      "type": {
+                        "type": "string",
+                        "enum": ["string", "richText", "number", "date", "select", "image", "array", "table", "chartData"]
+                      },
+                      "helpText": { "type": "string" },
+                      "defaultValue": {},
+                      "validation": {
+                        "type": "object",
+                        "properties": {
+                          "required": { "type": "boolean" },
+                          "min": { "type": "number" },
+                          "max": { "type": "number" },
+                          "minLength": { "type": "number" },
+                          "maxLength": { "type": "number" },
+                          "maxLines": { "type": "number" },
+                          "pattern": { "type": "string" },
+                          "minItems": { "type": "number" },
+                          "maxItems": { "type": "number" },
+                          "imageAspect": { "type": "string" },
+                          "imageMinWidthPx": { "type": "number" },
+                          "imageMinHeightPx": { "type": "number" }
+                        },
+                        "additionalProperties": false
+                      },
+                      "options": {
+                        "type": "array",
+                        "description": "For select fields",
+                        "items": {
+                          "type": "object",
+                          "required": ["label", "value"],
+                          "properties": {
+                            "label": { "type": "string" },
+                            "value": {}
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "itemSchema": {
+                        "type": "object",
+                        "description": "For array fields: schema for each item (nested fields)."
+                      },
+                      "mapping": {
+                        "type": "object",
+                        "required": ["placeholderId"],
+                        "properties": {
+                          "placeholderId": { "type": "string" },
+                          "transform": {
+                            "type": "string",
+                            "description": "Optional named transform e.g., 'bulletsToLines', 'formatPercent', 'formatCurrency'"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

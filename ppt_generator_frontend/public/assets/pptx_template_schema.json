@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PPTX Normalized Template Schema",
+  "type": "object",
+  "required": ["meta", "theme", "layouts", "slides"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["sourceFile", "extractedAt", "pageSize"],
+      "properties": {
+        "sourceFile": { "type": "string" },
+        "extractedAt": { "type": "string", "description": "ISO timestamp" },
+        "pageSize": {
+          "type": "object",
+          "required": ["widthPt", "heightPt"],
+          "properties": {
+            "widthPt": { "type": "number" },
+            "heightPt": { "type": "number" },
+            "orientation": { "type": "string", "enum": ["landscape", "portrait"] }
+          }
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "required": ["colors", "fonts"],
+      "properties": {
+        "colors": {
+          "type": "object",
+          "description": "Resolved theme colors in hex.",
+          "properties": {
+            "dk1": { "type": "string" },
+            "lt1": { "type": "string" },
+            "dk2": { "type": "string" },
+            "lt2": { "type": "string" },
+            "accent1": { "type": "string" },
+            "accent2": { "type": "string" },
+            "accent3": { "type": "string" },
+            "accent4": { "type": "string" },
+            "accent5": { "type": "string" },
+            "accent6": { "type": "string" },
+            "hlink": { "type": "string" },
+            "folHlink": { "type": "string" }
+          },
+          "additionalProperties": { "type": "string" }
+        },
+        "fonts": {
+          "type": "object",
+          "required": ["major", "minor"],
+          "properties": {
+            "major": { "type": "string", "description": "Major font family name" },
+            "minor": { "type": "string", "description": "Minor font family name" },
+            "fallbackStack": {
+              "type": "string",
+              "default": "Helvetica Neue, Arial, sans-serif"
+            }
+          }
+        },
+        "textStyles": {
+          "type": "object",
+          "description": "Optional named styles inferred from master/layout.",
+          "additionalProperties": { "$ref": "#/$defs/textStyle" }
+        }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "properties": {
+        "images": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assetRef" }
+        },
+        "icons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assetRef" }
+        },
+        "fonts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assetRef" }
+        }
+      }
+    },
+    "layouts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/layout" }
+    },
+    "slides": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/slide" }
+    }
+  },
+  "$defs": {
+    "assetRef": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["image", "icon", "font", "chartTemplate", "other"] },
+        "originalTarget": { "type": "string", "description": "PPTX internal path, e.g., ppt/media/image3.png" },
+        "suggestedName": { "type": "string" },
+        "mime": { "type": "string" },
+        "sha256": { "type": "string" },
+        "widthPx": { "type": "number" },
+        "heightPx": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "rect": {
+      "type": "object",
+      "required": ["xPt", "yPt", "wPt", "hPt"],
+      "properties": {
+        "xPt": { "type": "number" },
+        "yPt": { "type": "number" },
+        "wPt": { "type": "number" },
+        "hPt": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "textStyle": {
+      "type": "object",
+      "properties": {
+        "fontFamily": { "type": "string" },
+        "fontSizePt": { "type": "number" },
+        "fontWeight": { "type": "number" },
+        "italic": { "type": "boolean" },
+        "underline": { "type": "boolean" },
+        "color": { "type": "string", "description": "Hex color" },
+        "align": { "type": "string", "enum": ["left", "center", "right", "justify"] },
+        "lineHeight": { "type": "number" },
+        "letterSpacing": { "type": "number" },
+        "textTransform": { "type": "string", "enum": ["none", "uppercase", "lowercase", "capitalize"] }
+      },
+      "additionalProperties": false
+    },
+    "placeholder": {
+      "type": "object",
+      "required": ["id", "kind", "box"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "title",
+            "subtitle",
+            "sectionHeading",
+            "body",
+            "bullets",
+            "caption",
+            "kpiNumber",
+            "kpiLabel",
+            "image",
+            "imageGrid",
+            "icon",
+            "logo",
+            "chart",
+            "table",
+            "footerLeft",
+            "footerCenter",
+            "footerRight",
+            "pageNumber",
+            "disclaimer",
+            "custom"
+          ]
+        },
+        "box": { "$ref": "#/$defs/rect" },
+        "zIndex": { "type": "number", "default": 0 },
+        "rotationDeg": { "type": "number", "default": 0 },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "style": { "$ref": "#/$defs/textStyle" },
+        "constraints": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean", "default": false },
+            "maxLines": { "type": "number" },
+            "maxLength": { "type": "number" },
+            "imageAspect": { "type": "string" },
+            "maintainAspectRatio": { "type": "boolean", "default": true }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "fixedShape": {
+      "type": "object",
+      "required": ["id", "shapeType", "box"],
+      "properties": {
+        "id": { "type": "string" },
+        "shapeType": {
+          "type": "string",
+          "enum": ["rect", "roundRect", "line", "ellipse", "triangle", "freeform", "picture", "group", "unknown"]
+        },
+        "box": { "$ref": "#/$defs/rect" },
+        "zIndex": { "type": "number" },
+        "fill": { "type": "string", "description": "Hex or 'none'" },
+        "stroke": { "type": "string", "description": "Hex or 'none'" },
+        "strokeWidthPt": { "type": "number" },
+        "radiusPt": { "type": "number" },
+        "text": { "type": "string" },
+        "textStyle": { "$ref": "#/$defs/textStyle" },
+        "assetId": { "type": "string", "description": "For picture shapes" }
+      },
+      "additionalProperties": false
+    },
+    "layout": {
+      "type": "object",
+      "required": ["id", "name", "placeholders"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "masterId": { "type": "string" },
+        "background": {
+          "type": "object",
+          "properties": {
+            "fill": { "type": "string" },
+            "assetId": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "fixedShapes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fixedShape" }
+        },
+        "placeholders": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/placeholder" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "slide": {
+      "type": "object",
+      "required": ["index", "layoutId"],
+      "properties": {
+        "index": { "type": "number" },
+        "layoutId": { "type": "string" },
+        "notes": { "type": "string" },
+        "overrides": {
+          "type": "object",
+          "properties": {
+            "background": {
+              "type": "object",
+              "properties": {
+                "fill": { "type": "string" },
+                "assetId": { "type": "string" }
+              },
+              "additionalProperties": false
+            },
+            "fixedShapes": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/fixedShape" }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
