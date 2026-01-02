@@ -89,9 +89,34 @@ export async function loadTemplateModel() {
    * Preference order:
    * 1) extracted normalized template: /assets/template_extracted/pptx_template.normalized.json
    * 2) fallback contract/template: /assets/pptx_template_schema.json
+   *
+   * IMPORTANT:
+   * If the extracted template JSON exists but is clearly a placeholder (empty layouts or 0x0 page),
+   * we throw an error to avoid silently showing an incorrect "fallback" preview while claiming the
+   * template bundle is present.
    */
   const extracted = await loadJsonOrNull(`${TEMPLATE_EXTRACTED_BASE}/pptx_template.normalized.json`);
-  if (extracted && typeof extracted === 'object') return extracted;
+  if (extracted && typeof extracted === 'object') {
+    const widthPt = extracted?.meta?.pageSize?.widthPt;
+    const heightPt = extracted?.meta?.pageSize?.heightPt;
+    const layoutsCount = Array.isArray(extracted?.layouts) ? extracted.layouts.length : 0;
+
+    const looksPlaceholder =
+      layoutsCount === 0 ||
+      !Number.isFinite(widthPt) ||
+      !Number.isFinite(heightPt) ||
+      widthPt <= 0 ||
+      heightPt <= 0;
+
+    if (looksPlaceholder) {
+      throw new Error(
+        'Extracted template bundle found but appears incomplete (missing layouts and/or slide size). ' +
+          'Re-extract the PPTX or populate public/assets/template_extracted/*.json with real data.'
+      );
+    }
+
+    return extracted;
+  }
 
   const res = await fetch('/assets/pptx_template_schema.json', { cache: 'no-store' });
   if (!res.ok) {
