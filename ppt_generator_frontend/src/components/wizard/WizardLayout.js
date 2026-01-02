@@ -249,6 +249,26 @@ export default function WizardLayout() {
                 Template-driven positioning:{' '}
                 <span className="ocean-kbd">{templateDrivenPositioningActive ? 'active' : 'fallback'}</span>
               </div>
+              <div
+                className="ocean-banner"
+                role="status"
+                aria-live="polite"
+                style={{
+                  marginTop: 10,
+                  borderColor: 'rgba(37, 99, 235, 0.25)',
+                  background: 'rgba(37, 99, 235, 0.08)',
+                  color: '#1d4ed8',
+                }}
+              >
+                <div>
+                  <strong>Template locked</strong>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>
+                    This app is bound to the uploaded PPT template bundle in{' '}
+                    <span className="ocean-kbd">public/assets/template_extracted/</span>. Masters/layouts/slide types cannot
+                    be changed—only Skill Factory group count and order.
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="ocean-toolbar" aria-label="Global actions">
               <button type="button" className="ocean-btn ocean-btn-ghost" onClick={actions.restoreDefaults}>
@@ -284,9 +304,10 @@ export default function WizardLayout() {
 
               {!isPreview && (
                 <div className="ocean-help">
-                  Required flow enforced: <span className="ocean-kbd">Global First</span> +{' '}
+                  Locked flow: <span className="ocean-kbd">Global First</span> +{' '}
                   <span className="ocean-kbd">Skill Factory (SF-1..SF-4)</span> × N +{' '}
-                  <span className="ocean-kbd">Global Last</span>. Preview is blocked until required fields are complete.
+                  <span className="ocean-kbd">Global Last</span>. Missing required fields show warnings without breaking the
+                  live preview.
                 </div>
               )}
             </div>

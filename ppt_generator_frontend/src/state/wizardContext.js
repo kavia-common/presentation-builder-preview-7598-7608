@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
-import { loadWizardFlowSchema, getFieldsForSlideType } from '../services/schemaLoader';
+import { buildCanonicalOrderedSlidesFromTemplate, loadWizardFlowSchema, getFieldsForSlideType } from '../services/schemaLoader';
 
 const STORAGE_KEY = 'ppt_wizard_draft_v2_grouped';
 
@@ -432,7 +432,14 @@ export function WizardProvider({ children, loadSchemas }) {
   }, [state.status, state.wizardData, state.currentStep]);
 
   const api = useMemo(() => {
-    const orderedSlides = state.flowSchema && state.wizardData ? buildOrderedSlides(state.flowSchema, state.wizardData) : [];
+    const orderedSlides =
+      state.flowSchema && state.wizardData
+        ? buildCanonicalOrderedSlidesFromTemplate({
+            flowSchema: state.flowSchema,
+            wizardData: state.wizardData,
+            templateModel: state.templateModel,
+          })
+        : [];
     const previewStepIndex = orderedSlides.length;
 
     function canGoToStep(targetStep) {

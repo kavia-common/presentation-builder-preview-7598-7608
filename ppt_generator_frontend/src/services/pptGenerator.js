@@ -1,5 +1,10 @@
 import PptxGenJS from 'pptxgenjs';
-import { buildTemplateIndex, getAssetPublicUrl, getLayout, getTemplatePlaceholder } from './schemaLoader';
+import {
+  buildTemplateIndex,
+  getLayout,
+  getTemplatePlaceholder,
+  resolveTemplateAssetUrl,
+} from './schemaLoader';
 
 /**
  * Generator rules (template-driven):
@@ -149,8 +154,7 @@ async function renderFixedShapes(slide, layout, templateIndex) {
     const h = ptToIn(sh.box.hPt);
 
     if (sh.shapeType === 'picture' && sh.assetId) {
-      const ref = templateIndex?.assetsById?.get(sh.assetId) || null;
-      const url = getAssetPublicUrl(ref);
+      const url = resolveTemplateAssetUrl(templateIndex, sh.assetId);
       const data = await urlToDataUrl(url);
       if (data) {
         slide.addImage({ data, x, y, w, h });
@@ -200,6 +204,17 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
 
     const layout = getLayout(templateIndex, s.layoutId);
 
+    // Layout background (best-effort): if the extractor provided a background asset, place it full-slide.
+    if (layout?.background?.assetId) {
+      // eslint-disable-next-line no-await-in-loop
+      const bgUrl = resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
+      // eslint-disable-next-line no-await-in-loop
+      const bgData = await urlToDataUrl(bgUrl);
+      if (bgData) {
+        slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5 });
+      }
+    }
+
     // Add fixed shapes (layout/master) if present in normalized template.
     if (layout) {
       // eslint-disable-next-line no-await-in-loop
@@ -227,8 +242,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
       if (field.type === 'image') {
         let dataUrl = await fileToDataUrl(valueRaw);
         if (!dataUrl && ph?.assetId) {
-          const ref = templateIndex?.assetsById?.get(ph.assetId) || null;
-          const url = getAssetPublicUrl(ref);
+          const url = resolveTemplateAssetUrl(templateIndex, ph.assetId);
           dataUrl = await urlToDataUrl(url);
         }
 
@@ -242,7 +256,14 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
             slide.addImage({ data: dataUrl, x, y, w, h });
           } else {
             // Keep placeholder id visible for later fidelity
-            slide.addText(`[${placeholderId}] (image missing)`, { x, y, w, h: Math.min(h, 0.4), fontSize: 10, color: '999999' });
+            slide.addText(`[${placeholderId}] (image missing)`, {
+              x,
+              y,
+              w,
+              h: Math.min(h, 0.4),
+              fontSize: 10,
+              color: '999999',
+            });
           }
         } else {
           // eslint-disable-next-line no-await-in-loop
@@ -255,7 +276,8 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const w = ptToIn(box.wPt);
           const h = ptToIn(box.hPt);
 
-          const text = value == null || value === '' ? '' : String(value);
+          const templateDefault = typeof ph?.text === 'string' && ph.text.trim() ? ph.text.trim() : '';
+          const text = value == null || value === '' ? templateDefault : String(value);
           const style = ph?.style || null;
 
           const fontSize = style?.fontSizePt ? Math.max(8, style.fontSizePt) : 14;

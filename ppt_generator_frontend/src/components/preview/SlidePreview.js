@@ -1,5 +1,11 @@
 import React, { useMemo } from 'react';
-import { buildTemplateIndex, getAssetPublicUrl, getLayout, getTemplatePlaceholder } from '../../services/schemaLoader';
+import {
+  buildTemplateIndex,
+  getLayout,
+  getTemplatePlaceholder,
+  resolveTemplateAssetUrl,
+  validateSlideRequiredFields,
+} from '../../services/schemaLoader';
 
 function getPageSize(templateModel) {
   const wPt = templateModel?.meta?.pageSize?.widthPt;
@@ -71,8 +77,7 @@ function renderFixedShape(shape, rectCss, templateIndex) {
   const strokeWidthPt = typeof shape?.strokeWidthPt === 'number' ? shape.strokeWidthPt : 0;
 
   if (shape?.shapeType === 'picture' && shape?.assetId) {
-    const ref = templateIndex?.assetsById?.get(shape.assetId) || null;
-    const url = getAssetPublicUrl(ref);
+    const url = resolveTemplateAssetUrl(templateIndex, shape.assetId);
     if (!url) return null;
     return (
       <img
@@ -138,12 +143,45 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     return list;
   }, [layout]);
 
+  const warnings = useMemo(
+    () => validateSlideRequiredFields({ slideStep, wizardData, templateIndex }),
+    [slideStep, wizardData, templateIndex]
+  );
+
   const fontFamily = templateFontStack(templateModel?.theme?.fonts);
   const textColor = templateTextColor(templateModel?.theme?.colors);
 
   return (
     <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>
       <div className="ocean-slide-layer" style={{ fontFamily, color: textColor }}>
+        {warnings.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 10,
+              top: 10,
+              right: 10,
+              zIndex: 999,
+              background: 'rgba(239, 68, 68, 0.10)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: 10,
+              padding: '8px 10px',
+              color: '#991b1b',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            Missing required fields:
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontWeight: 600 }}>
+              {warnings.slice(0, 5).map((w) => (
+                <li key={`${w.fieldId}:${w.placeholderId || ''}`}>{w.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {fixedShapes.map((sh) => {
           if (!sh?.box) return null;
           const rectCss = scaleRect(sh.box, page);
@@ -184,7 +222,9 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
             );
           }
 
-          const labelText = value ? String(value) : `[${ph.id}]`;
+          // If no user data exists, show template's default text (if provided); else show placeholder id.
+          const templateDefault = typeof precise?.text === 'string' && precise.text.trim() ? precise.text : null;
+          const labelText = value ? String(value) : templateDefault || `[${ph.id}]`;
 
           // Apply placeholder style when present (font size, weight, color, align).
           const style = precise?.style || ph?.style || null;
@@ -218,6 +258,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                   color: normalizeHexColor(style?.color) || textColor,
                   textAlign: align,
                   lineHeight: style?.lineHeight || undefined,
+                  opacity: value ? 1 : 0.82,
                 }}
               >
                 {labelText}

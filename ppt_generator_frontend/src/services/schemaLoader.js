@@ -10,6 +10,27 @@
 
 const TEMPLATE_EXTRACTED_BASE = '/assets/template_extracted';
 
+/**
+ * Canonical extracted template artifact paths (must not be invented elsewhere).
+ * These are treated as the fixed template source for this app.
+ */
+const TEMPLATE_EXTRACTED_FILES = Object.freeze({
+  normalized: `${TEMPLATE_EXTRACTED_BASE}/pptx_template.normalized.json`,
+  masters: `${TEMPLATE_EXTRACTED_BASE}/pptx_template.masters.json`,
+  relationships: `${TEMPLATE_EXTRACTED_BASE}/pptx_template.relationships.json`,
+  assetsManifest: `${TEMPLATE_EXTRACTED_BASE}/assets_manifest.json`,
+});
+
+/**
+ * Canonical slide type sequence for the product workflow.
+ * The template bundle may optionally map these to deck slide indices/layoutIds.
+ */
+const CANONICAL_FLOW = Object.freeze({
+  globalFirst: 'global_first',
+  skillFactory: ['sf1', 'sf2', 'sf3', 'sf4'],
+  globalLast: 'global_last',
+});
+
 // PUBLIC_INTERFACE
 export async function loadWizardSchema() {
   /** Load the legacy form wizard schema JSON (drives step rendering in older flat mode). */
@@ -52,10 +73,10 @@ export async function loadExtractedTemplateArtifacts() {
    * Returns { normalized, masters, relationships, assetsManifest } with nulls when missing.
    */
   const [normalized, masters, relationships, assetsManifest] = await Promise.all([
-    loadJsonOrNull(`${TEMPLATE_EXTRACTED_BASE}/pptx_template.normalized.json`),
-    loadJsonOrNull(`${TEMPLATE_EXTRACTED_BASE}/pptx_template.masters.json`),
-    loadJsonOrNull(`${TEMPLATE_EXTRACTED_BASE}/pptx_template.relationships.json`),
-    loadJsonOrNull(`${TEMPLATE_EXTRACTED_BASE}/assets_manifest.json`),
+    loadJsonOrNull(TEMPLATE_EXTRACTED_FILES.normalized),
+    loadJsonOrNull(TEMPLATE_EXTRACTED_FILES.masters),
+    loadJsonOrNull(TEMPLATE_EXTRACTED_FILES.relationships),
+    loadJsonOrNull(TEMPLATE_EXTRACTED_FILES.assetsManifest),
   ]);
   return { normalized, masters, relationships, assetsManifest };
 }
@@ -174,6 +195,7 @@ export function buildTemplateIndex(templateModel, extractedTemplate = null) {
   const theme = templateModel?.theme || {};
 
   // Assets: from schema model (templateModel.assets.*) and from extracted assets_manifest.json
+  // IMPORTANT: assets_manifest.json is canonical for extracted binaries available under public/assets/template_extracted/.
   const assetsById = new Map();
   const addAssetRef = (a) => {
     if (!a?.id) return;
@@ -199,6 +221,165 @@ export function buildTemplateIndex(templateModel, extractedTemplate = null) {
     assetsManifest,
     isTemplatePositioningActive: hasAnyExactBox,
   };
+}
+
+/**
+ * Attempt to resolve a template "asset reference" into a public URL.
+ * We prefer assets from assets_manifest.json when possible since that reflects extracted binaries.
+ */
+function resolveAssetRef(templateIndex, assetOrId) {
+  if (!assetOrId) return null;
+  if (typeof assetOrId === 'object') return assetOrId;
+  if (typeof assetOrId === 'string') return templateIndex?.assetsById?.get(assetOrId) || null;
+  return null;
+}
+
+// PUBLIC_INTERFACE
+export function resolveTemplateAssetUrl(templateIndex, assetOrId) {
+  /**
+   * Resolve an asset (id or ref object) to a public URL under /assets/template_extracted.
+   * Returns null if asset not resolvable.
+   */
+  const ref = resolveAssetRef(templateIndex, assetOrId);
+  return getAssetPublicUrl(ref);
+}
+
+/**
+ * Best-effort: find slide indices for GlobalFirst / GlobalLast and the 4-slide SkillFactory group in the extracted template.
+ * Since extracted JSON may be minimal, we fall back to canonical ordering purely by flow schema + wizardData.
+ */
+function deriveTemplateSlideIndexMap(templateModel) {
+  // The extractor may (in future) include mapping in meta.slideTypeToSlideIndex.
+  const map = templateModel?.meta?.slideTypeToSlideIndex;
+  if (map && typeof map === 'object') return map;
+
+  // Fallback: if template slides exist and have notes containing our known slideType markers.
+  // This is non-breaking and optional; if not found, return {}.
+  const out = {};
+  const slides = Array.isArray(templateModel?.slides) ? templateModel.slides : [];
+  for (const s of slides) {
+    const notes = typeof s?.notes === 'string' ? s.notes : '';
+    if (notes.includes('slideType=global_first')) out[CANONICAL_FLOW.globalFirst] = s.index;
+    if (notes.includes('slideType=global_last')) out[CANONICAL_FLOW.globalLast] = s.index;
+    // SkillFactory slide keys can't be uniquely inferred without additional metadata.
+  }
+  return out;
+}
+
+// PUBLIC_INTERFACE
+export function buildCanonicalOrderedSlidesFromTemplate({ flowSchema, wizardData, templateModel }) {
+  /**
+   * Build ordered slide list strictly following canonical flow:
+   * [Global First] + k * [SF1..SF4] + [Global Last]
+   *
+   * IMPORTANT:
+   * - Slide *types* and group structure are locked; only the number/order of Skill Factory groups can change.
+   * - LayoutIds are sourced from flowSchema.slideTypes[*].layoutId, with optional override from template slide index mapping.
+   *
+   * Returns an array of step objects.
+   */
+  if (!flowSchema || !wizardData) return [];
+  const map = deriveTemplateSlideIndexMap(templateModel);
+
+  const resolveLayoutId = (slideType, fallback) => {
+    // If the template explicitly maps slideType -> slideIndex, and templateModel.slides has layoutId, use it.
+    const idx = map?.[slideType];
+    if (typeof idx === 'number') {
+      const found = (Array.isArray(templateModel?.slides) ? templateModel.slides : []).find((s) => s?.index === idx);
+      if (found?.layoutId) return found.layoutId;
+    }
+    return fallback;
+  };
+
+  const steps = [];
+
+  steps.push({
+    key: 'global_first',
+    kind: 'global',
+    slideType: CANONICAL_FLOW.globalFirst,
+    title: flowSchema?.slideTypes?.global_first?.label || 'Global First',
+    layoutId: resolveLayoutId(CANONICAL_FLOW.globalFirst, flowSchema?.slideTypes?.global_first?.layoutId || 'global_first'),
+    fields: getFieldsForSlideType(flowSchema, CANONICAL_FLOW.globalFirst),
+    dataPath: { scope: 'globalFirst' },
+  });
+
+  const factories = Array.isArray(wizardData?.skillFactories) ? wizardData.skillFactories : [];
+  factories.forEach((sf, idx) => {
+    const groupLabel = `Skill Factory ${idx + 1}`;
+    CANONICAL_FLOW.skillFactory.forEach((sft) => {
+      steps.push({
+        key: `${sf.id}:${sft}`,
+        kind: 'skillFactory',
+        groupId: sf.id,
+        groupIndex: idx,
+        groupLabel,
+        slideType: sft,
+        title: `${groupLabel} — ${flowSchema?.slideTypes?.[sft]?.label || sft.toUpperCase()}`,
+        layoutId: resolveLayoutId(sft, flowSchema?.slideTypes?.[sft]?.layoutId || sft),
+        fields: getFieldsForSlideType(flowSchema, sft),
+        dataPath: { scope: 'skillFactories', groupId: sf.id, slideKey: sft },
+      });
+    });
+  });
+
+  steps.push({
+    key: 'global_last',
+    kind: 'global',
+    slideType: CANONICAL_FLOW.globalLast,
+    title: flowSchema?.slideTypes?.global_last?.label || 'Global Last',
+    layoutId: resolveLayoutId(CANONICAL_FLOW.globalLast, flowSchema?.slideTypes?.global_last?.layoutId || 'global_last'),
+    fields: getFieldsForSlideType(flowSchema, CANONICAL_FLOW.globalLast),
+    dataPath: { scope: 'globalLast' },
+  });
+
+  return steps;
+}
+
+// PUBLIC_INTERFACE
+export function validateSlideRequiredFields({ slideStep, wizardData, templateIndex }) {
+  /**
+   * Validate required placeholders for a slide step without breaking preview.
+   *
+   * Sources of "required":
+   * 1) Field schema validation.required (always authoritative)
+   * 2) Template placeholder constraints.required when placeholder is referenced by a field mapping
+   *
+   * Returns: Array<{ fieldId, placeholderId, kind, message }>
+   */
+  const warnings = [];
+  if (!slideStep || !wizardData) return warnings;
+
+  const fields = Array.isArray(slideStep?.fields) ? slideStep.fields : [];
+  for (const f of fields) {
+    const placeholderId = f?.mapping?.placeholderId;
+    const isRequiredBySchema = Boolean(f?.validation?.required);
+    const tpl = placeholderId ? getTemplatePlaceholder(templateIndex, placeholderId) : null;
+    const isRequiredByTemplate = Boolean(tpl?.constraints?.required);
+
+    if (!isRequiredBySchema && !isRequiredByTemplate) continue;
+
+    // Resolve value (duplicated logic kept tiny to avoid circular imports).
+    const p = slideStep?.dataPath;
+    let v;
+    if (p?.scope === 'globalFirst') v = wizardData?.globalFirst?.[f.id];
+    else if (p?.scope === 'globalLast') v = wizardData?.globalLast?.[f.id];
+    else if (p?.scope === 'skillFactories') {
+      const group = (wizardData?.skillFactories || []).find((g) => g.id === p.groupId);
+      v = group?.slides?.[p.slideKey]?.[f.id];
+    }
+
+    const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0);
+    if (!empty) continue;
+
+    warnings.push({
+      fieldId: f.id,
+      placeholderId: placeholderId || null,
+      kind: f.type === 'image' ? 'image' : 'text',
+      message: f.type === 'image' ? 'Missing required image.' : 'Missing required text.',
+    });
+  }
+
+  return warnings;
 }
 
 // PUBLIC_INTERFACE
