@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "sourceFile": "20260102_111438_WSR-Digital_RMG_24-12-25.pptx",
+    "extractedAt": "TODO",
+    "pageSize": {
+      "widthPt": 0,
+      "heightPt": 0,
+      "orientation": "landscape"
+    }
+  },
+  "theme": {
+    "colors": {},
+    "fonts": {
+      "major": "",
+      "minor": "",
+      "fallbackStack": "Helvetica Neue, Arial, sans-serif"
+    },
+    "textStyles": {}
+  },
+  "assets": {
+    "images": [],
+    "icons": [],
+    "fonts": []
+  },
+  "layouts": [],
+  "slides": []
+}
