@@ -165,7 +165,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
      * - Global Last: locked to background-only (no overlays).
      *
      * Skill Factory Slide 1 strict policy (per task requirements):
-     * - Use extracted template placeholders ONLY (no fallback placeholders/geometry).
+     * - Use extracted template placeholders ONLY (no fallback placeholders/geometry/styles).
      */
     let list = [];
     if (layout?.placeholders?.length) list = layout.placeholders;
@@ -184,8 +184,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     }
 
     if (isSf1) {
-      // SF1 must not fall back to any synthetic positioning; missing placeholders are treated as "render nothing".
-      // This ensures the preview uses the normalized template SF1 layout geometry verbatim.
+      // SF1 must not fall back to any synthetic positioning.
+      // Missing placeholders are treated as "render nothing" (pixel-perfect template lock).
       return list;
     }
 
@@ -356,7 +356,14 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           const precise = getTemplatePlaceholder(templateIndex, ph.id);
 
           // Pixel-perfect rule for Global First: use ONLY the extracted box.
-          const box = isGlobalFirst ? precise?.box : precise?.box || ph.box;
+          // Pixel-perfect rule for SF1: use ONLY the extracted box (no synthetic fallback rects).
+          const box =
+            isGlobalFirst || isSf1
+              ? precise?.box
+              : precise?.box || ph.box;
+
+          // If the template box is missing for SF1, render nothing (no fallback placement).
+          if (isSf1 && !box) return null;
 
           const rect = box ? scaleRect(box, page) : { left: '5%', top: '5%', width: '90%', height: '12%' };
 
@@ -402,7 +409,12 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
             );
           }
 
-          const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
+          // For SF1, skip the generic mapped-field rendering for SF1_DATE_RANGE entirely;
+          // it is handled by the explicit combined renderer above.
+          const mappedField =
+            isSf1 && ph.id === 'SF1_DATE_RANGE'
+              ? null
+              : fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
 
           const value = mappedField ? resolveDisplayTextForField({ slideStep, field: mappedField, wizardData }) : null;
 
