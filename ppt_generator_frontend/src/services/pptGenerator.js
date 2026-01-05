@@ -5,6 +5,7 @@ import {
   getTemplatePlaceholder,
   resolveTemplateAssetUrl,
 } from './schemaLoader';
+import { formatDdMmmYyyy } from '../utils/dateFormat';
 
 /**
  * Generator rules (template-driven):
@@ -84,21 +85,7 @@ function resolveDeckTitle(wizardData) {
   return 'presentation';
 }
 
-/**
- * Global First formatting rules:
- * - Name line should render as "Name : ---------" when empty, else "Name : <value>"
- * - Date line should render as "Date : ---------" when empty, else "Date : <value>"
- *
- * IMPORTANT: We only change the TEXT CONTENT. We do not change placeholder box/style,
- * so extracted template typography and coordinates remain the source of truth.
- */
-function formatGlobalFirstLabeledLine(fieldId, rawValue) {
-  const isEmpty = rawValue == null || (typeof rawValue === 'string' && rawValue.trim() === '');
-  const v = isEmpty ? '---------' : String(rawValue);
-  if (fieldId === 'name') return `Name : ${v}`;
-  if (fieldId === 'date') return `Date : ${v}`;
-  return String(rawValue ?? '');
-}
+
 
 function safeFileName(name) {
   return (
@@ -230,7 +217,8 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     const isGlobalLast = s.slideType === 'global_last';
 
     // Global First and Global Last must match the provided reference images as backgrounds.
-    // Both are locked to background-only (no text placeholders, no shapes).
+    // Global Last is locked to background-only.
+    // Global First has ONLY one editable overlay: Date (GF_DATE).
     if (isGlobalFirst || isGlobalLast) {
       // eslint-disable-next-line no-await-in-loop
       const bgData = await urlToDataUrl(isGlobalFirst ? '/assets/global_first_background.png' : '/assets/global_last_background.png');
@@ -239,6 +227,49 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         // NOTE: PptxGenJS sizing:'contain' keeps full image visible without distortion.
         slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5, sizing: { type: 'contain' } });
       }
+    }
+
+    // Global Last: after inserting the fixed background, render nothing else.
+    if (isGlobalLast) {
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+
+    // Global First: write ONLY the date text at GF_DATE using extracted box/style.
+    if (isGlobalFirst) {
+      const ph = getTemplatePlaceholder(templateIndex, 'GF_DATE');
+      const box = ph?.box;
+
+      const rawDate = wizardData?.globalFirst?.date;
+      const safeText = rawDate ? formatDdMmmYyyy(rawDate) : '';
+
+      if (safeText && box && typeof box.xPt === 'number') {
+        const x = ptToIn(box.xPt);
+        const y = ptToIn(box.yPt);
+        const w = ptToIn(box.wPt);
+        const h = ptToIn(box.hPt);
+
+        const style = ph?.style || null;
+        const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
+        const color = style?.color ? String(style.color).replace('#', '') : 'FFFFFF';
+        const align = style?.align || 'left';
+        const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
+
+        slide.addText(safeText, {
+          x,
+          y,
+          w,
+          h,
+          fontSize,
+          bold,
+          color,
+          align,
+          fontFace: style?.fontFamily || undefined,
+        });
+      }
+
+      // eslint-disable-next-line no-continue
+      continue;
     }
 
     // For non-locked slides (everything except global_first/global_last), we also render
@@ -260,12 +291,6 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         // eslint-disable-next-line no-await-in-loop
         await renderFixedShapes(slide, layout, templateIndex);
       }
-    }
-
-    // Locked Global First / Global Last: after inserting the fixed background, render nothing else.
-    if (isGlobalFirst || isGlobalLast) {
-      // eslint-disable-next-line no-continue
-      continue;
     }
 
     // Other slides: render all fields.
@@ -329,18 +354,9 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const align = style?.align || 'left';
           const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
 
-          // Global First: always render labeled line with dashed placeholder when empty.
-          // Non-GlobalFirst: NEVER render placeholder IDs as fallbacks; use template default or empty.
-          let safeText;
-          if (
-            isGlobalFirst &&
-            (field.id === 'name' || field.id === 'date') &&
-            (placeholderId === 'GF_TITLE' || placeholderId === 'GF_DATE')
-          ) {
-            safeText = formatGlobalFirstLabeledLine(field.id, value);
-          } else {
-            safeText = text || '';
-          }
+          // Global First is handled earlier (background + date-only), so we never enter here for it.
+          // Non-GlobalFirst: no diagnostic text; use template default or empty.
+          const safeText = text || '';
 
           if (safeText) {
             slide.addText(safeText, {

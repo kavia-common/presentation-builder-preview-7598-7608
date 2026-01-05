@@ -16,18 +16,15 @@ function pickFirstMatchingPlaceholderId(templateModel, candidates) {
 function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   /**
    * Global First slide customization (per user requirements):
-   * - Fixed texts (no inputs):
-   *   1) "Tata Elxsi" at top (template placeholder GF_TAGLINE)
-   *   2) "Digital RMG Weekly Metrics" (template placeholder GF_SUBTITLE)
-   * - Expose exactly two inputs:
-   *   - Name (text) -> GF_TITLE
+   * - Fixed background MUST remain identical to template.
+   * - Expose exactly ONE input:
    *   - Date (date picker) -> GF_DATE
-   * - Both fields are required and gate Preview navigation.
+   * - Render the date value in "DD MMM YYYY" on-slide using the extracted template placeholder geometry + style.
+   * - Do NOT expose or render any other editable fields (e.g., Name).
    *
-   * Global Last slide customization (per user requirements):
+   * Global Last slide customization:
    * - MUST be fully locked / non-editable.
    * - No inputs are exposed by the wizard.
-   * - All text/graphics are rendered exactly as in the extracted template.
    *
    * IMPORTANT:
    * - Do NOT alter layout/coordinates. Only map fields to already-existing placeholders.
@@ -37,32 +34,16 @@ function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   const next = { ...flowSchema, slideTypes: { ...(flowSchema.slideTypes || {}) } };
 
   // -------------------------
-  // Global First: enforce inputs
+  // Global First: enforce ONLY Date input
   // -------------------------
   const gf = next.slideTypes.global_first
     ? { ...next.slideTypes.global_first }
     : { label: 'Global First', layoutId: 'global_first', fields: [] };
 
   // Detect canonical placeholders by stable IDs (template-extracted bundle is authoritative)
-  const gfTitlePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_TITLE', 'TITLE', 'TITLE_1', 'TITLE1']);
-  const gfSubtitlePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_SUBTITLE', 'SUBTITLE', 'SUBTITLE_1', 'SUBTITLE1']);
-  const gfTaglinePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_TAGLINE', 'TAGLINE', 'TAGLINE_1', 'TAGLINE1']);
   const gfDatePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_DATE', 'DATE', 'DATE_PLACEHOLDER', 'SLIDEDATE']);
 
-  // Enforce exactly two inputs in the wizard.
   const enforcedFields = [];
-
-  if (gfTitlePh) {
-    enforcedFields.push({
-      id: 'name',
-      label: 'Name',
-      type: 'string',
-      defaultValue: '',
-      validation: { required: true, maxLength: 80 },
-      mapping: { placeholderId: gfTitlePh },
-    });
-  }
-
   if (gfDatePh) {
     enforcedFields.push({
       id: 'date',
@@ -86,18 +67,13 @@ function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   gl.fields = [];
   next.slideTypes.global_last = gl;
 
-  /**
-   * Apply fixed-text defaults by populating placeholder.text in the template model itself.
-   * This ensures preview and PPT generation match the extracted template without exposing inputs.
-   */
+  // Keep fixed-text default machinery intact for backward compatibility (but Global First fixed text is already in template).
   next.__templateFixedTextDefaults = {
     globalFirst: {
-      tagline: gfTaglinePh ? { placeholderId: gfTaglinePh, text: 'Tata Elxsi' } : null,
-      subtitle: gfSubtitlePh ? { placeholderId: gfSubtitlePh, text: 'Digital RMG Weekly Metrics' } : null,
+      tagline: null,
+      subtitle: null,
     },
     globalLast: {
-      // These are taken from the provided reference image and are intended to be non-editable.
-      // If the extracted placeholder IDs change in a future template re-extraction, update these IDs accordingly.
       thankYou: { placeholderId: 'GL_THANK_YOU', text: 'THANK YOU' },
       brand: { placeholderId: 'GL_BRAND', text: 'TATA ELXSI' },
       cta: { placeholderId: 'GL_CTA', text: 'FIND OUT MORE' },
@@ -304,8 +280,7 @@ function minimalPreviewValidation(flowSchema, wizardData, orderedSlides) {
 
   const globalFirstStep = orderedSlides.find((s) => s.slideType === 'global_first');
   if (globalFirstStep) {
-    // Per requirements: Global First must have exactly two required inputs: Name + Date.
-    if (!isNonEmptyString(wizardData?.globalFirst?.name)) errors.push('Global First: Name is required.');
+    // Per requirements: Global First must have exactly one required input: Date.
     if (!isNonEmptyString(wizardData?.globalFirst?.date)) errors.push('Global First: Date is required.');
   }
 

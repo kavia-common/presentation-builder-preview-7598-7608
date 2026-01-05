@@ -6,22 +6,7 @@ import {
   resolveTemplateAssetUrl,
   validateSlideRequiredFields,
 } from '../../services/schemaLoader';
-
-/**
- * Global First formatting rules:
- * - Name line should render as "Name : ---------" when empty, else "Name : <value>"
- * - Date line should render as "Date : ---------" when empty, else "Date : <value>"
- *
- * IMPORTANT: We only change the TEXT CONTENT. We do not change placeholder box/style,
- * so extracted template typography and coordinates remain the source of truth.
- */
-function formatGlobalFirstLabeledLine(fieldId, rawValue) {
-  const isEmpty = rawValue == null || (typeof rawValue === 'string' && rawValue.trim() === '');
-  const v = isEmpty ? '---------' : String(rawValue);
-  if (fieldId === 'name') return `Name : ${v}`;
-  if (fieldId === 'date') return `Date : ${v}`;
-  return String(rawValue ?? '');
-}
+import { formatDdMmmYyyy } from '../../utils/dateFormat';
 
 function getPageSize(templateModel) {
   const wPt = templateModel?.meta?.pageSize?.widthPt;
@@ -193,14 +178,14 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   const placeholders = useMemo(() => {
     /**
      * Locked slides policy:
-     * - Global First: pixel-perfect; render ONLY allowed placeholders using extracted geometry.
-     * - Global Last: pixel-perfect; render ONLY extracted placeholders (no fallback boxes).
+     * - Global First: render ONLY GF_DATE using extracted geometry (no other overlays).
+     * - Global Last: locked to background-only (no overlays).
      */
     let list = [];
     if (layout?.placeholders?.length) list = layout.placeholders;
 
     if (isGlobalFirst) {
-      const allowed = new Set(['GF_TAGLINE', 'GF_SUBTITLE', 'GF_TITLE', 'GF_DATE']);
+      const allowed = new Set(['GF_DATE']);
       list = list
         .filter((p) => allowed.has(p?.id))
         .filter((p) => {
@@ -211,12 +196,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     }
 
     if (isGlobalLast) {
-      // Render exactly what the extracted template provides for global_last (text/boxes).
-      // No fallbacks and no extra placeholders.
-      return list.filter((p) => {
-        const precise = getTemplatePlaceholder(templateIndex, p?.id);
-        return Boolean(precise?.box);
-      });
+      return [];
     }
 
     // Other slides: fallback is allowed.
@@ -224,9 +204,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     return list;
   }, [layout, fields, isGlobalFirst, isGlobalLast, templateIndex]);
 
-  // Global First: background is fixed image; we render only the text placeholders (Name/Date/tagline/subtitle),
-  // and suppress any fixedShapes so we don't double-render over the reference background.
-  // Global Last: locked slide is handled by early return above (image only).
+  // Global First: do not render fixedShapes to avoid duplicating template background elements.
+  // Global Last: background-only.
   const fixedShapes = useMemo(() => {
     if (isGlobalFirst) return [];
     if (isGlobalLast) return [];
@@ -331,15 +310,13 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideStep?.key]);
 
-  // Global First and Global Last must be purely the provided fixed background image
-  // with no overlays/placeholders/shapes rendered in preview.
-  if (isGlobalFirst || isGlobalLast) {
-    const fixedBg = isGlobalFirst ? '/assets/global_first_background.png' : '/assets/global_last_background.png';
+  // Global Last must be purely the provided fixed background image with no overlays.
+  if (isGlobalLast) {
     return (
       <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>
         <div className="ocean-slide-layer" style={{ fontFamily, color: textColor }}>
           <img
-            src={fixedBg}
+            src="/assets/global_last_background.png"
             alt="slide background"
             style={{
               position: 'absolute',
@@ -349,7 +326,6 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
               objectFit: 'contain', // no crop, no distortion (letterbox if needed)
               objectPosition: 'center center',
               zIndex: 0,
-              // Avoid any subpixel/transform artifacts across DPRs
               transform: 'translateZ(0)',
             }}
           />
@@ -436,13 +412,9 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           const hasValue = value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
 
           let labelText;
-          if (
-            isGlobalFirst &&
-            mappedField &&
-            (mappedField.id === 'name' || mappedField.id === 'date') &&
-            (ph.id === 'GF_TITLE' || ph.id === 'GF_DATE')
-          ) {
-            labelText = formatGlobalFirstLabeledLine(mappedField.id, hasValue ? value : '');
+          if (isGlobalFirst && mappedField?.id === 'date' && ph.id === 'GF_DATE') {
+            const formatted = hasValue ? formatDdMmmYyyy(value) : '';
+            labelText = formatted;
           } else {
             labelText = hasValue ? String(value) : templateDefault || '';
           }
