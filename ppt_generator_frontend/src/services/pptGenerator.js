@@ -319,6 +319,15 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
 
     for (let i = 0; i < fields.length; i += 1) {
       const field = fields[i];
+
+      // Skill Factory Slide 1: dateRangeStart + dateRangeEnd both map to SF1_DATE_RANGE.
+      // Render the combined "DD MMM YYYY – DD MMM YYYY" string exactly once to avoid double-drawing
+      // into the same template placeholder.
+      if (s.slideType === 'sf1' && field?.mapping?.placeholderId === 'SF1_DATE_RANGE' && field.id === 'dateRangeEnd') {
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+
       let valueRaw = resolveValueForStep(wizardData, s, field.id);
 
       // Skill Factory Slide 1: Start/End date fields are rendered together as a single date-range string.
