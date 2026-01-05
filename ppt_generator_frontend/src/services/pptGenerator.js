@@ -352,6 +352,19 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
       const ph = getTemplatePlaceholder(templateIndex, placeholderId);
       const box = ph?.box;
 
+      // STRICT MODE (per requirement): Skill Factory Slide 1 must use template-only geometry & style in PPT export too.
+      // If the placeholder box is missing, render nothing (no fallback placement).
+      const isSf1 = s.slideType === 'sf1';
+      if (isSf1 && (!box || typeof box.xPt !== 'number')) {
+        // eslint-disable-next-line no-console
+        console.warn('[generatePptx] SF1 placeholder missing; suppressed (no fallback placement).', {
+          slide: s?.key,
+          placeholderId,
+        });
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+
       if (field.type === 'image') {
         let dataUrl = await fileToDataUrl(valueRaw);
         if (!dataUrl && ph?.assetId) {
@@ -372,7 +385,8 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
             // eslint-disable-next-line no-console
             console.warn('[generatePptx] image missing (suppressed in PPT output):', { slide: s?.key, placeholderId });
           }
-        } else if (!isGlobalFirst) {
+        } else if (!isGlobalFirst && !isSf1) {
+          // For non-strict slides, allow safe fallbacks.
           // eslint-disable-next-line no-await-in-loop
           await addFallbackImage(slide, i, valueRaw);
         }
@@ -403,7 +417,8 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
               ...textOpts,
             });
           }
-        } else if (!isGlobalFirst) {
+        } else if (!isGlobalFirst && !isSf1) {
+          // For non-strict slides, allow safe fallbacks.
           addFallbackText(slide, i, value);
         }
       }

@@ -158,6 +158,24 @@ export function buildCssTextStyleFromTemplateStyle(style) {
 }
 
 // PUBLIC_INTERFACE
+export function assertTemplateOnlyStyle(style) {
+  /**
+   * Validate that we are using template-extracted style only.
+   * Returns true if style looks like a valid extracted style object; otherwise false.
+   *
+   * This is intentionally conservative: it does not fabricate defaults and does not throw,
+   * so callers can choose to suppress rendering instead of falling back.
+   */
+  if (!style || typeof style !== 'object') return false;
+  // At minimum, extracted styles should carry a fontSizePt or fontFamily or color.
+  const hasAny =
+    typeof style.fontSizePt === 'number' ||
+    (typeof style.fontFamily === 'string' && style.fontFamily.trim()) ||
+    (typeof style.color === 'string' && style.color.trim());
+  return Boolean(hasAny);
+}
+
+// PUBLIC_INTERFACE
 export function buildPptTextOptionsFromTemplateStyle(style) {
   /**
    * Convert a template placeholder .style into PptxGenJS addText options.
