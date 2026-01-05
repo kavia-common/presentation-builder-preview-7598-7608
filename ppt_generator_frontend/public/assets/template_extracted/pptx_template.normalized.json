@@ -96,7 +96,7 @@
           "name": "slide1.object12",
           "kind": "body",
           "text": "Tata Elxsi",
-          "box": { "xPt": 59.0, "yPt": 191.0, "wPt": 270.0, "hPt": 16.0 },
+          "box": { "xPt": 61.0, "yPt": 190.0, "wPt": 270.0, "hPt": 16.0 },
           "zIndex": 18,
           "style": { "fontFamily": "Arial", "fontSizePt": 11.0, "fontWeight": 700, "color": "#FFFFFF", "align": "left", "lineHeight": 1.0 }
         },
@@ -104,7 +104,7 @@
           "id": "GF_TITLE",
           "name": "slide1.object14",
           "kind": "title",
-          "box": { "xPt": 59.0, "yPt": 213.0, "wPt": 360.0, "hPt": 18.0 },
+          "box": { "xPt": 63.0, "yPt": 211.0, "wPt": 368.0, "hPt": 18.0 },
           "zIndex": 19,
           "style": { "fontFamily": "Arial", "fontSizePt": 11.0, "fontWeight": 700, "color": "#FFFFFF", "align": "left", "lineHeight": 1.0 }
         },
@@ -112,7 +112,7 @@
           "id": "GF_DATE",
           "name": "slide1.object11",
           "kind": "body",
-          "box": { "xPt": 59.0, "yPt": 236.0, "wPt": 360.0, "hPt": 16.0 },
+          "box": { "xPt": 63.0, "yPt": 234.0, "wPt": 368.0, "hPt": 16.0 },
           "zIndex": 20,
           "style": { "fontFamily": "Arial", "fontSizePt": 10.5, "fontWeight": 600, "color": "#FFFFFF", "align": "left", "lineHeight": 1.0 }
         },
@@ -121,7 +121,7 @@
           "name": "slide1.object15",
           "kind": "body",
           "text": "Digital RMG Weekly Metrics",
-          "box": { "xPt": 59.0, "yPt": 257.0, "wPt": 390.0, "hPt": 18.0 },
+          "box": { "xPt": 61.0, "yPt": 256.0, "wPt": 390.0, "hPt": 18.0 },
           "zIndex": 21,
           "style": { "fontFamily": "Arial", "fontSizePt": 10.5, "fontWeight": 600, "color": "#FFFFFF", "align": "left", "lineHeight": 1.0 }
         }
