@@ -71,6 +71,48 @@ function normalizeHexColor(c) {
   return c;
 }
 
+function ptToPx(pt) {
+  // PowerPoint points map well to CSS px for on-screen preview; keep 1pt ~= 1px for fidelity.
+  // We intentionally do NOT scale (previous behavior used *0.9) because the request requires exact template typography.
+  if (typeof pt !== 'number' || Number.isNaN(pt)) return undefined;
+  return `${Math.max(1, pt)}px`;
+}
+
+function normalizeLineHeight(lineHeight) {
+  // Template extractor may emit:
+  // - unitless number (e.g., 1.1)
+  // - string (e.g., "1.1" or "14px")
+  // - numeric point value (rare) that should be treated as px-equivalent for preview
+  if (lineHeight == null) return undefined;
+
+  if (typeof lineHeight === 'number') {
+    if (lineHeight > 0 && lineHeight <= 3) return lineHeight; // treat as multiplier
+    return ptToPx(lineHeight); // treat as pt
+  }
+
+  if (typeof lineHeight === 'string') {
+    const s = lineHeight.trim();
+    if (!s) return undefined;
+    if (/^[0-9]*\.?[0-9]+$/.test(s)) {
+      const n = Number(s);
+      if (!Number.isNaN(n)) {
+        if (n > 0 && n <= 3) return n;
+        return ptToPx(n);
+      }
+    }
+    return s;
+  }
+
+  return undefined;
+}
+
+function normalizeFontWeight(fontWeight) {
+  if (fontWeight == null) return undefined;
+  if (typeof fontWeight === 'number') return fontWeight;
+  if (typeof fontWeight === 'string') return fontWeight;
+  return undefined;
+}
+
 function renderFixedShape(shape, rectCss, templateIndex) {
   const fill = normalizeHexColor(shape?.fill);
   const stroke = normalizeHexColor(shape?.stroke);
@@ -338,7 +380,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           const hasValue = value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
           const labelText = hasValue ? String(value) : templateDefault || `[${ph.id}]`;
 
-          // Apply placeholder style when present (font size, weight, color, align).
+          // Apply placeholder style when present (font size, weight, color, align, line-height).
+          // For Global First slide, the request requires exact typography as per the extracted template.
           const style = precise?.style || ph?.style || null;
           const align = style?.align || 'left';
 
@@ -354,7 +397,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
-                padding: 6,
+                // Do not add padding; it changes perceived alignment vs the PPT template.
+                padding: 0,
                 boxSizing: 'border-box',
               }}
               title={ph.id}
@@ -365,11 +409,12 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                   width: '100%',
                   whiteSpace: 'pre-wrap',
                   fontFamily: style?.fontFamily ? `"${style.fontFamily}", ${fontFamily}` : fontFamily,
-                  fontSize: style?.fontSizePt ? `${Math.max(8, style.fontSizePt * 0.9)}px` : undefined,
-                  fontWeight: style?.fontWeight || undefined,
+                  // Exact mapping: treat pt as px in preview.
+                  fontSize: style?.fontSizePt ? ptToPx(style.fontSizePt) : undefined,
+                  fontWeight: normalizeFontWeight(style?.fontWeight),
                   color: normalizeHexColor(style?.color) || textColor,
                   textAlign: align,
-                  lineHeight: style?.lineHeight || undefined,
+                  lineHeight: normalizeLineHeight(style?.lineHeight),
                   opacity: value ? 1 : 0.82,
                 }}
               >

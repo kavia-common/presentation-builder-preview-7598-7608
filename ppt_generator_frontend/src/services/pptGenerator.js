@@ -252,12 +252,23 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         const text = typeof ph?.text === 'string' ? ph.text : '';
         const style = ph?.style || null;
 
-        const fontSize = style?.fontSizePt ? Math.max(8, style.fontSizePt) : 14;
+        // Keep template typography as the source of truth.
+        const fontSize = style?.fontSizePt ? Math.max(1, style.fontSizePt) : 14;
         const color = style?.color ? String(style.color).replace('#', '') : '111827';
         const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
         const align = style?.align || 'left';
 
-        slide.addText(text || '', { x, y, w, h, fontSize, bold, color, align, fontFace: style?.fontFamily || undefined });
+        slide.addText(text || '', {
+          x,
+          y,
+          w,
+          h,
+          fontSize,
+          bold,
+          color,
+          align,
+          fontFace: style?.fontFamily || undefined,
+        });
       }
     }
 
@@ -322,7 +333,8 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const text = value == null || value === '' ? templateDefault : String(value);
           const style = ph?.style || null;
 
-          const fontSize = style?.fontSizePt ? Math.max(8, style.fontSizePt) : 14;
+          // Keep template typography as the source of truth.
+          const fontSize = style?.fontSizePt ? Math.max(1, style.fontSizePt) : 14;
           const color = style?.color ? String(style.color).replace('#', '') : '111827';
           const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
           const align = style?.align || 'left';
