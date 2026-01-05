@@ -331,11 +331,10 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideStep?.key]);
 
-  // Global Last must be purely the provided image with no overlays or additional rendering.
-  // Global First must keep the fixed background BUT still overlay editable Name/Date text
-  // using extracted template placeholder geometry/typography (pixel-perfect).
-  if (isGlobalLast) {
-    const fixedBg = '/assets/global_last_background.png';
+  // Global First and Global Last must be purely the provided fixed background image
+  // with no overlays/placeholders/shapes rendered in preview.
+  if (isGlobalFirst || isGlobalLast) {
+    const fixedBg = isGlobalFirst ? '/assets/global_first_background.png' : '/assets/global_last_background.png';
     return (
       <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>
         <div className="ocean-slide-layer" style={{ fontFamily, color: textColor }}>
@@ -358,10 +357,6 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
       </div>
     );
   }
-
-  // Global First uses the exact template-derived placeholders (GF_TITLE/GF_DATE) for text rendering,
-  // but its background must stay fixed to the known reference image.
-  // We therefore continue into the normal rendering path, but force `backgroundUrl` to the fixed image.
 
   return (
     <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>

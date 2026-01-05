@@ -230,9 +230,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     const isGlobalLast = s.slideType === 'global_last';
 
     // Global First and Global Last must match the provided reference images as backgrounds.
-    // Global Last remains fully locked (background only).
-    // Global First uses the fixed background BUT must still render Name/Date text in the extracted
-    // template placeholder boxes for pixel-perfect PPT output.
+    // Both are locked to background-only (no text placeholders, no shapes).
     if (isGlobalFirst || isGlobalLast) {
       // eslint-disable-next-line no-await-in-loop
       const bgData = await urlToDataUrl(isGlobalFirst ? '/assets/global_first_background.png' : '/assets/global_last_background.png');
@@ -264,16 +262,15 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
       }
     }
 
-    // Locked Global Last: after inserting the fixed background, render nothing else.
-    if (isGlobalLast) {
+    // Locked Global First / Global Last: after inserting the fixed background, render nothing else.
+    if (isGlobalFirst || isGlobalLast) {
       // eslint-disable-next-line no-continue
       continue;
     }
 
-    // Global First: render only Name + Date in their exact template boxes over the fixed background.
     // Other slides: render all fields.
     const fieldsAll = Array.isArray(s.fields) ? s.fields : [];
-    const fields = isGlobalFirst ? fieldsAll.filter((f) => f?.id === 'name' || f?.id === 'date') : fieldsAll;
+    const fields = fieldsAll;
 
     for (let i = 0; i < fields.length; i += 1) {
       const field = fields[i];
