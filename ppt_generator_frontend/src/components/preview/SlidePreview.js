@@ -130,18 +130,40 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   const layout = useMemo(() => getLayout(templateIndex, layoutId), [templateIndex, layoutId]);
 
   const placeholders = useMemo(() => {
-    if (layout?.placeholders?.length) return layout.placeholders;
-    // fallback: create boxes from current step fields (still stable by placeholderId when provided)
-    return fallbackBoxesForFields(fields);
-  }, [layout, fields]);
+    let list = [];
+    if (layout?.placeholders?.length) list = layout.placeholders;
+    else {
+      // fallback: create boxes from current step fields (still stable by placeholderId when provided)
+      list = fallbackBoxesForFields(fields);
+    }
 
+    // Global First: hard constrain to only the allowed IDs to avoid any stray placeholders
+    // being rendered from the extracted template.
+    if (isGlobalFirst) {
+      const allowed = new Set(['GF_TAGLINE', 'GF_SUBTITLE', 'GF_TITLE', 'GF_DATE']);
+      list = list.filter((p) => allowed.has(p?.id));
+    }
+
+    return list;
+  }, [layout, fields, isGlobalFirst]);
+
+  const isGlobalFirst = slideStep?.slideType === 'global_first';
+
+  // For Global First slide, we must display ONLY:
+  // - fixed 'Tata Elxsi' (GF_TAGLINE)
+  // - fixed 'Digital RMG Weekly Metrics' (GF_SUBTITLE)
+  // - editable Name (GF_TITLE) and Date (GF_DATE)
+  //
+  // Therefore, we hide ALL other fixed shapes and any other placeholders that might exist.
   const fixedShapes = useMemo(() => {
     // Template supports fixed shapes on layouts (and slide overrides); for now, layout-only.
     const list = [];
     if (Array.isArray(layout?.fixedShapes)) list.push(...layout.fixedShapes);
+
+    if (isGlobalFirst) return []; // remove all images/shapes for Global First per requirements
     // slide overrides could be in templateModel.slides[index], but we don't have slide index mapping here.
     return list;
-  }, [layout]);
+  }, [layout, isGlobalFirst]);
 
   const requiredWarnings = useMemo(
     () => validateSlideRequiredFields({ slideStep, wizardData, templateIndex }),

@@ -204,25 +204,66 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     slide.addNotes(`layoutId=${s.layoutId || ''} slideType=${s.slideType || ''}`);
 
     const layout = getLayout(templateIndex, s.layoutId);
+    const isGlobalFirst = s.slideType === 'global_first';
 
-    // Layout background (best-effort): if the extractor provided a background asset, place it full-slide.
-    if (layout?.background?.assetId) {
-      // eslint-disable-next-line no-await-in-loop
-      const bgUrl = resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
-      // eslint-disable-next-line no-await-in-loop
-      const bgData = await urlToDataUrl(bgUrl);
-      if (bgData) {
-        slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5 });
+    // Global First must contain ONLY the specified elements:
+    // - fixed text 'Tata Elxsi' (GF_TAGLINE)
+    // - fixed text 'Digital RMG Weekly Metrics' (GF_SUBTITLE)
+    // - editable Name (GF_TITLE) and Date (GF_DATE)
+    //
+    // Therefore:
+    // - do NOT render layout background
+    // - do NOT render fixed shapes
+    // - only render GF_TAGLINE/GF_SUBTITLE as fixed placeholders via template defaults
+    // - only render the two wizard fields (mapped to GF_TITLE/GF_DATE)
+    if (!isGlobalFirst) {
+      // Layout background (best-effort): if the extractor provided a background asset, place it full-slide.
+      if (layout?.background?.assetId) {
+        // eslint-disable-next-line no-await-in-loop
+        const bgUrl = resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
+        // eslint-disable-next-line no-await-in-loop
+        const bgData = await urlToDataUrl(bgUrl);
+        if (bgData) {
+          slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5 });
+        }
+      }
+
+      // Add fixed shapes (layout/master) if present in normalized template.
+      if (layout) {
+        // eslint-disable-next-line no-await-in-loop
+        await renderFixedShapes(slide, layout, templateIndex);
       }
     }
 
-    // Add fixed shapes (layout/master) if present in normalized template.
-    if (layout) {
-      // eslint-disable-next-line no-await-in-loop
-      await renderFixedShapes(slide, layout, templateIndex);
+    // Add the two fixed texts for Global First as template-driven placeholders,
+    // so they appear without any user input.
+    if (isGlobalFirst) {
+      const fixedIds = ['GF_TAGLINE', 'GF_SUBTITLE'];
+      for (const placeholderId of fixedIds) {
+        const ph = getTemplatePlaceholder(templateIndex, placeholderId);
+        const box = ph?.box;
+        if (!box || typeof box.xPt !== 'number') continue;
+
+        const x = ptToIn(box.xPt);
+        const y = ptToIn(box.yPt);
+        const w = ptToIn(box.wPt);
+        const h = ptToIn(box.hPt);
+
+        const text = typeof ph?.text === 'string' ? ph.text : '';
+        const style = ph?.style || null;
+
+        const fontSize = style?.fontSizePt ? Math.max(8, style.fontSizePt) : 14;
+        const color = style?.color ? String(style.color).replace('#', '') : '111827';
+        const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
+        const align = style?.align || 'left';
+
+        slide.addText(text || '', { x, y, w, h, fontSize, bold, color, align, fontFace: style?.fontFamily || undefined });
+      }
     }
 
-    const fields = Array.isArray(s.fields) ? s.fields : [];
+    // Render only allowed wizard fields on Global First (Name + Date).
+    const fieldsAll = Array.isArray(s.fields) ? s.fields : [];
+    const fields = isGlobalFirst ? fieldsAll.filter((f) => f?.id === 'name' || f?.id === 'date') : fieldsAll;
 
     for (let i = 0; i < fields.length; i += 1) {
       const field = fields[i];
@@ -255,8 +296,8 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
 
           if (dataUrl) {
             slide.addImage({ data: dataUrl, x, y, w, h });
-          } else {
-            // Keep placeholder id visible for later fidelity
+          } else if (!isGlobalFirst) {
+            // Keep placeholder id visible for later fidelity (not for Global First).
             slide.addText(`[${placeholderId}] (image missing)`, {
               x,
               y,
@@ -266,7 +307,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
               color: '999999',
             });
           }
-        } else {
+        } else if (!isGlobalFirst) {
           // eslint-disable-next-line no-await-in-loop
           await addFallbackImage(slide, i, placeholderId, valueRaw);
         }
@@ -286,7 +327,11 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
           const align = style?.align || 'left';
 
-          slide.addText(text || `[${placeholderId}]`, {
+          // For Global First, do not show placeholder ids if empty; only show actual value or template default.
+          // (Template default for GF_TITLE/GF_DATE is empty, so these will truly be blank until user fills them.)
+          const safeText = isGlobalFirst ? (text || '') : (text || `[${placeholderId}]`);
+
+          slide.addText(safeText, {
             x,
             y,
             w,
@@ -297,7 +342,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
             align,
             fontFace: style?.fontFamily || undefined,
           });
-        } else {
+        } else if (!isGlobalFirst) {
           addFallbackText(slide, i, placeholderId, value);
         }
       }
