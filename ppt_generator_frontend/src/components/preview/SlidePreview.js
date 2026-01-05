@@ -190,36 +190,39 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   const layout = useMemo(() => getLayout(templateIndex, layoutId), [templateIndex, layoutId]);
 
   const placeholders = useMemo(() => {
+    /**
+     * For Global First the template is locked and MUST be pixel-perfect.
+     * So we:
+     * - render ONLY the 4 known placeholders
+     * - require template-extracted geometry (box) for each
+     * - do NOT fall back to generated boxes for this slide
+     */
     let list = [];
     if (layout?.placeholders?.length) list = layout.placeholders;
-    else {
-      // fallback: create boxes from current step fields (still stable by placeholderId when provided)
-      list = fallbackBoxesForFields(fields);
-    }
 
-    // Global First: hard constrain to only the allowed IDs to avoid any stray placeholders
-    // being rendered from the extracted template.
     if (isGlobalFirst) {
       const allowed = new Set(['GF_TAGLINE', 'GF_SUBTITLE', 'GF_TITLE', 'GF_DATE']);
       list = list.filter((p) => allowed.has(p?.id));
+
+      // Hard stop: if template placeholders are missing, do NOT fabricate geometry
+      // (fabrication would break pixel-perfect requirement).
+      list = list.filter((p) => {
+        const precise = getTemplatePlaceholder(templateIndex, p?.id);
+        return Boolean(precise?.box);
+      });
+    } else if (!list.length) {
+      // Non-global-first slides: fallback is allowed.
+      list = fallbackBoxesForFields(fields);
     }
 
     return list;
-  }, [layout, fields, isGlobalFirst]);
+  }, [layout, fields, isGlobalFirst, templateIndex]);
 
-  // For Global First slide, we must display ONLY:
-  // - fixed 'Tata Elxsi' (GF_TAGLINE)
-  // - fixed 'Digital RMG Weekly Metrics' (GF_SUBTITLE)
-  // - editable Name (GF_TITLE) and Date (GF_DATE)
-  //
-  // Therefore, we hide ALL other fixed shapes and any other placeholders that might exist.
+  // For Global First slide, we must display ONLY the four text elements and no other visuals.
   const fixedShapes = useMemo(() => {
-    // Template supports fixed shapes on layouts (and slide overrides); for now, layout-only.
+    if (isGlobalFirst) return [];
     const list = [];
     if (Array.isArray(layout?.fixedShapes)) list.push(...layout.fixedShapes);
-
-    if (isGlobalFirst) return []; // remove all images/shapes for Global First per requirements
-    // slide overrides could be in templateModel.slides[index], but we don't have slide index mapping here.
     return list;
   }, [layout, isGlobalFirst]);
 
@@ -343,9 +346,11 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
         })}
 
         {placeholders.map((ph) => {
-          // Prefer exact coordinates from extracted placeholders by id if present.
+          // Prefer exact coordinates from extracted placeholders by id.
           const precise = getTemplatePlaceholder(templateIndex, ph.id);
-          const box = precise?.box || ph.box;
+
+          // Pixel-perfect rule for Global First: use ONLY the extracted box.
+          const box = isGlobalFirst ? precise?.box : precise?.box || ph.box;
 
           const rect = box ? scaleRect(box, page) : { left: '5%', top: '5%', width: '90%', height: '12%' };
           const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
@@ -409,10 +414,12 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
             labelText = hasValue ? String(value) : templateDefault || `[${ph.id}]`;
           }
 
-          // Apply placeholder style when present (font size, weight, color, align, line-height).
-          // For Global First slide, the request requires exact typography as per the extracted template.
+          // IMPORTANT (pixel-perfect Global First):
+          // Always use template placeholder style/geometry; no theme fallbacks, no opacity tweaks.
           const style = precise?.style || ph?.style || null;
           const align = style?.align || 'left';
+
+          const resolvedFontFamily = style?.fontFamily ? `"${style.fontFamily}", ${fontFamily}` : fontFamily;
 
           return (
             <div
@@ -426,7 +433,6 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
-                // Do not add padding; it changes perceived alignment vs the PPT template.
                 padding: 0,
                 boxSizing: 'border-box',
               }}
@@ -437,14 +443,14 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                 style={{
                   width: '100%',
                   whiteSpace: 'pre-wrap',
-                  fontFamily: style?.fontFamily ? `"${style.fontFamily}", ${fontFamily}` : fontFamily,
+                  fontFamily: resolvedFontFamily,
                   // Exact mapping: treat pt as px in preview.
                   fontSize: style?.fontSizePt ? ptToPx(style.fontSizePt) : undefined,
                   fontWeight: normalizeFontWeight(style?.fontWeight),
-                  color: normalizeHexColor(style?.color) || textColor,
+                  // Do not fall back for Global First; still keep a safe fallback for other slides.
+                  color: normalizeHexColor(style?.color) || (isGlobalFirst ? undefined : textColor),
                   textAlign: align,
                   lineHeight: normalizeLineHeight(style?.lineHeight),
-                  opacity: value ? 1 : 0.82,
                 }}
               >
                 {labelText}

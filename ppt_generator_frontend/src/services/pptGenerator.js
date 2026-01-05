@@ -268,11 +268,13 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         const text = typeof ph?.text === 'string' ? ph.text : '';
         const style = ph?.style || null;
 
-        // Keep template typography as the source of truth.
-        const fontSize = style?.fontSizePt ? Math.max(1, style.fontSizePt) : 14;
+        // Exact template typography (no fallbacks/overrides except safe defaults when extractor omitted fields).
+        const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
         const color = style?.color ? String(style.color).replace('#', '') : '111827';
-        const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
         const align = style?.align || 'left';
+
+        // pptxgen expects boolean bold; map numeric weight >= 700 to bold.
+        const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
 
         slide.addText(text || '', {
           x,
@@ -349,13 +351,13 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const text = value == null || value === '' ? templateDefault : String(value);
           const style = ph?.style || null;
 
-          // Keep template typography as the source of truth.
-          const fontSize = style?.fontSizePt ? Math.max(1, style.fontSizePt) : 14;
+          // Exact template typography (no overrides).
+          const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
           const color = style?.color ? String(style.color).replace('#', '') : '111827';
-          const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
           const align = style?.align || 'left';
+          const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
 
-          // Global First: GF_TITLE (name) and GF_DATE (date) must render literal labeled lines even when empty.
+          // Global First: always render labeled line with dashed placeholder when empty.
           let safeText;
           if (
             isGlobalFirst &&
@@ -364,9 +366,6 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           ) {
             safeText = formatGlobalFirstLabeledLine(field.id, value);
           } else {
-            // For Global First, do not show placeholder ids if empty; only show actual value or template default.
-            // (Template default for GF_TITLE/GF_DATE is empty, so these will truly be blank until user fills them,
-            // unless overridden by the labeled-line requirement above.)
             safeText = isGlobalFirst ? (text || '') : (text || `[${placeholderId}]`);
           }
 
