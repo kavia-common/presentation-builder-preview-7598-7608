@@ -250,8 +250,9 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         // eslint-disable-next-line no-await-in-loop
         const bgData = await urlToDataUrl('/assets/global_last_background.png');
         if (bgData) {
-          // Preserve aspect ratio and fill slide canvas without distortion.
-          slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5, sizing: { type: 'cover' } });
+          // Match preview: preserve aspect ratio with NO cropping (letterbox if needed).
+          // NOTE: PptxGenJS sizing:'contain' keeps full image visible without distortion.
+          slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5, sizing: { type: 'contain' } });
         }
       } else if (layout?.background?.assetId) {
         // eslint-disable-next-line no-await-in-loop

@@ -277,13 +277,14 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   const textColor = templateTextColor(templateModel?.theme?.colors);
 
   // Render extracted layout background as an image when available.
-  // Global Last is locked to a fixed background image (user-provided attachment) and must render
-  // identically in preview and PPT generation.
+  // Global Last is locked to a fixed background image and must render identically in preview and PPT generation.
   const backgroundUrl = useMemo(() => {
     if (isGlobalLast) return '/assets/global_last_background.png';
     if (!layout?.background?.assetId) return null;
     return resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
   }, [layout, templateIndex, isGlobalLast]);
+
+  const backgroundFit = isGlobalLast ? 'contain' : 'cover';
 
   // Avoid leaking object URLs when user provides images (File inputs).
   const [objectUrlByPlaceholderId, setObjectUrlByPlaceholderId] = useState({});
@@ -324,6 +325,33 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideStep?.key]);
 
+  // Global Last must be purely the provided image with no overlays or additional rendering.
+  if (isGlobalLast) {
+    return (
+      <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>
+        <div className="ocean-slide-layer" style={{ fontFamily, color: textColor }}>
+          {backgroundUrl && (
+            <img
+              src={backgroundUrl}
+              alt="slide background"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: backgroundFit, // contain => no crop, no distortion (letterbox if needed)
+                objectPosition: 'center center',
+                zIndex: 0,
+                // Avoid any subpixel/transform artifacts across DPRs
+                transform: 'translateZ(0)',
+              }}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>
       <div className="ocean-slide-layer" style={{ fontFamily, color: textColor }}>
@@ -331,7 +359,15 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           <img
             src={backgroundUrl}
             alt="slide background"
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: backgroundFit,
+              objectPosition: 'center center',
+              zIndex: 0,
+            }}
           />
         )}
 
@@ -351,8 +387,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           const rect = box ? scaleRect(box, page) : { left: '5%', top: '5%', width: '90%', height: '12%' };
           const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
 
-          // Global Last is fully locked: ignore wizardData and always render template default text.
-          const value = isGlobalLast ? null : mappedField ? resolveValueForStep(wizardData, slideStep, mappedField.id) : null;
+          const value = mappedField ? resolveValueForStep(wizardData, slideStep, mappedField.id) : null;
 
           const isImage = (precise?.kind || ph.kind) === 'image' || mappedField?.type === 'image';
 
@@ -384,24 +419,16 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                 {src ? (
                   <img src={src} alt={ph.id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  // Keep the preview clean: do not render any warning/notice labels.
-                  // Missing images are simply blank (no placeholder notice).
                   <div style={{ width: '100%', height: '100%' }} aria-hidden="true" />
                 )}
               </div>
             );
           }
 
-          // If no user data exists, show template's default text (if provided); else show empty.
           const templateDefault = typeof precise?.text === 'string' && precise.text.trim() ? precise.text : null;
 
-          // IMPORTANT:
-          // - Use a non-truthy check so values like 0 (or other falsy-but-valid values) still render.
-          // - Treat empty string as "not provided" so template defaults show through.
           const hasValue = value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
 
-          // Global First special-case: GF_TITLE (name) and GF_DATE (date) must render as literal
-          // "Name : ..." / "Date : ..." even when empty (with dashed placeholder).
           let labelText;
           if (
             isGlobalFirst &&
@@ -411,11 +438,9 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           ) {
             labelText = formatGlobalFirstLabeledLine(mappedField.id, hasValue ? value : '');
           } else {
-            // Suppress placeholder notices: do not show [PLACEHOLDER_ID] when empty.
             labelText = hasValue ? String(value) : templateDefault || '';
           }
 
-          // Always use template placeholder style/geometry; no extra notices/overlays.
           const style = precise?.style || ph?.style || null;
           const align = style?.align || 'left';
 
@@ -444,10 +469,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                   width: '100%',
                   whiteSpace: 'pre-wrap',
                   fontFamily: resolvedFontFamily,
-                  // Exact mapping: treat pt as px in preview.
                   fontSize: style?.fontSizePt ? ptToPx(style.fontSizePt) : undefined,
                   fontWeight: normalizeFontWeight(style?.fontWeight),
-                  // Do not fall back for Global First; still keep a safe fallback for other slides.
                   color: normalizeHexColor(style?.color) || (isGlobalFirst ? undefined : textColor),
                   textAlign: align,
                   lineHeight: normalizeLineHeight(style?.lineHeight),
