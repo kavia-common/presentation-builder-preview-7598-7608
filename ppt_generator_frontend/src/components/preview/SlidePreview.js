@@ -224,14 +224,16 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     return list;
   }, [layout, fields, isGlobalFirst, isGlobalLast, templateIndex]);
 
-  // Global First: only its 4 text placeholders (no background/fixedShapes).
-  // Global Last: render background + fixedShapes for exact replication.
+  // Global First: background is fixed image; we render only the text placeholders (Name/Date/tagline/subtitle),
+  // and suppress any fixedShapes so we don't double-render over the reference background.
+  // Global Last: locked slide is handled by early return above (image only).
   const fixedShapes = useMemo(() => {
     if (isGlobalFirst) return [];
+    if (isGlobalLast) return [];
     const list = [];
     if (Array.isArray(layout?.fixedShapes)) list.push(...layout.fixedShapes);
     return list;
-  }, [layout, isGlobalFirst]);
+  }, [layout, isGlobalFirst, isGlobalLast]);
 
   /**
    * Suppress all warning/notice rendering in UI.
@@ -279,12 +281,16 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   // Render extracted layout background as an image when available.
   // Global Last is locked to a fixed background image and must render identically in preview and PPT generation.
   const backgroundUrl = useMemo(() => {
+    // Locked backgrounds must use the known reference images to match PPT export.
+    if (isGlobalFirst) return '/assets/global_first_background.png';
     if (isGlobalLast) return '/assets/global_last_background.png';
+
     if (!layout?.background?.assetId) return null;
     return resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
-  }, [layout, templateIndex, isGlobalLast]);
+  }, [layout, templateIndex, isGlobalLast, isGlobalFirst]);
 
-  const backgroundFit = isGlobalLast ? 'contain' : 'cover';
+  // Locked slides should not crop/distort backgrounds.
+  const backgroundFit = isGlobalFirst || isGlobalLast ? 'contain' : 'cover';
 
   // Avoid leaking object URLs when user provides images (File inputs).
   const [objectUrlByPlaceholderId, setObjectUrlByPlaceholderId] = useState({});
@@ -325,9 +331,11 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideStep?.key]);
 
-  // Global First & Global Last must be purely the provided image with no overlays or additional rendering.
-  if (isGlobalFirst || isGlobalLast) {
-    const fixedBg = isGlobalFirst ? '/assets/global_first_background.png' : '/assets/global_last_background.png';
+  // Global Last must be purely the provided image with no overlays or additional rendering.
+  // Global First must keep the fixed background BUT still overlay editable Name/Date text
+  // using extracted template placeholder geometry/typography (pixel-perfect).
+  if (isGlobalLast) {
+    const fixedBg = '/assets/global_last_background.png';
     return (
       <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>
         <div className="ocean-slide-layer" style={{ fontFamily, color: textColor }}>
@@ -350,6 +358,10 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
       </div>
     );
   }
+
+  // Global First uses the exact template-derived placeholders (GF_TITLE/GF_DATE) for text rendering,
+  // but its background must stay fixed to the known reference image.
+  // We therefore continue into the normal rendering path, but force `backgroundUrl` to the fixed image.
 
   return (
     <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>

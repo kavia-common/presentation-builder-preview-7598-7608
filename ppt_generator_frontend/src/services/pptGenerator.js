@@ -229,9 +229,10 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     const isGlobalFirst = s.slideType === 'global_first';
     const isGlobalLast = s.slideType === 'global_last';
 
-    // Global First and Global Last must be fully locked and match the provided reference images:
-    // - Render fixed full-slide background images
-    // - Render NOTHING else (no fixedShapes, no placeholders, no wizard inputs)
+    // Global First and Global Last must match the provided reference images as backgrounds.
+    // Global Last remains fully locked (background only).
+    // Global First uses the fixed background BUT must still render Name/Date text in the extracted
+    // template placeholder boxes for pixel-perfect PPT output.
     if (isGlobalFirst || isGlobalLast) {
       // eslint-disable-next-line no-await-in-loop
       const bgData = await urlToDataUrl(isGlobalFirst ? '/assets/global_first_background.png' : '/assets/global_last_background.png');
@@ -240,7 +241,11 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         // NOTE: PptxGenJS sizing:'contain' keeps full image visible without distortion.
         slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5, sizing: { type: 'contain' } });
       }
-    } else {
+    }
+
+    // For non-locked slides (everything except global_first/global_last), we also render
+    // template background assets + fixed shapes.
+    if (!isGlobalFirst && !isGlobalLast) {
       // Layout background for non-locked slides.
       if (layout?.background?.assetId) {
         // eslint-disable-next-line no-await-in-loop
@@ -259,13 +264,14 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
       }
     }
 
-    // Locked slides: after inserting the fixed background, render nothing else.
-    if (isGlobalFirst || isGlobalLast) {
+    // Locked Global Last: after inserting the fixed background, render nothing else.
+    if (isGlobalLast) {
       // eslint-disable-next-line no-continue
       continue;
     }
 
-    // Render only allowed wizard fields on Global First (Name + Date) and ONLY via template boxes.
+    // Global First: render only Name + Date in their exact template boxes over the fixed background.
+    // Other slides: render all fields.
     const fieldsAll = Array.isArray(s.fields) ? s.fields : [];
     const fields = isGlobalFirst ? fieldsAll.filter((f) => f?.id === 'name' || f?.id === 'date') : fieldsAll;
 
