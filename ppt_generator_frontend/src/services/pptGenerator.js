@@ -74,8 +74,9 @@ function applyTransform(value, transformName) {
 }
 
 function resolveDeckTitle(wizardData) {
-  const maybeTitle = wizardData?.globalFirst?.title;
-  if (typeof maybeTitle === 'string' && maybeTitle.trim()) return maybeTitle.trim();
+  // Global First no longer collects a "title" input; use Name as the best available human-friendly filename base.
+  const maybeName = wizardData?.globalFirst?.name;
+  if (typeof maybeName === 'string' && maybeName.trim()) return maybeName.trim();
   return 'presentation';
 }
 

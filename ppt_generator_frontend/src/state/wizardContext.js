@@ -15,12 +15,18 @@ function pickFirstMatchingPlaceholderId(templateModel, candidates) {
 
 function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   /**
-   * Ensure Global First has dedicated form fields for common placeholders (title/subtitle/tagline/date/footer/logo)
-   * by detecting known placeholder ids in the extracted template bundle.
+   * Global First slide customization (per user requirements):
+   * - Fixed texts (no inputs):
+   *   1) "Tata Elxsi" at top (template placeholder GF_TAGLINE)
+   *   2) "Digital RMG Weekly Metrics" (template placeholder GF_SUBTITLE)
+   * - Expose exactly two inputs:
+   *   - Name (text) -> GF_TITLE
+   *   - Date (date picker) -> GF_DATE
+   * - Both fields are required and gate Preview navigation.
    *
    * IMPORTANT:
    * - Do NOT alter layout/coordinates. Only map fields to already-existing placeholders.
-   * - If a placeholder doesn't exist, we simply don't add that field (preview will show a non-blocking warning if mapping points to a missing placeholder).
+   * - We intentionally DROP any previously auto-detected Global First fields to keep exactly two inputs.
    */
   if (!flowSchema || typeof flowSchema !== 'object') return flowSchema;
 
@@ -28,95 +34,68 @@ function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   const gf = next.slideTypes.global_first
     ? { ...next.slideTypes.global_first }
     : { label: 'Global First', layoutId: 'global_first', fields: [] };
-  const fields = Array.isArray(gf.fields) ? [...gf.fields] : [];
 
-  const existingById = new Map(fields.filter((f) => f?.id).map((f) => [f.id, f]));
-
-  const upsert = (field) => {
-    if (!field?.id) return;
-    if (existingById.has(field.id)) return; // keep existing UI/validation as-is
-    fields.push(field);
-    existingById.set(field.id, field);
-  };
-
-  // Detect common placeholders by stable IDs (template-extracted bundle is authoritative)
+  // Detect canonical placeholders by stable IDs (template-extracted bundle is authoritative)
   const gfTitlePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_TITLE', 'TITLE', 'TITLE_1', 'TITLE1']);
   const gfSubtitlePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_SUBTITLE', 'SUBTITLE', 'SUBTITLE_1', 'SUBTITLE1']);
   const gfTaglinePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_TAGLINE', 'TAGLINE', 'TAGLINE_1', 'TAGLINE1']);
   const gfDatePh = pickFirstMatchingPlaceholderId(templateModel, ['GF_DATE', 'DATE', 'DATE_PLACEHOLDER', 'SLIDEDATE']);
-  const gfFooterPh = pickFirstMatchingPlaceholderId(templateModel, ['GF_FOOTER', 'FOOTER', 'FOOTER_TEXT', 'FOOTER_LEFT', 'FOOTER_CENTER', 'FOOTER_RIGHT']);
-  const gfLogoPh = pickFirstMatchingPlaceholderId(templateModel, ['GF_LOGO', 'LOGO', 'LOGO_1', 'COMPANY_LOGO']);
 
-  // Keep the existing schema-defined title/subtitle; add optional extras when present in template.
-  if (gfTaglinePh) {
-    upsert({
-      id: 'tagline',
-      label: 'Tagline',
+  // Enforce exactly two inputs in the wizard.
+  const enforcedFields = [];
+
+  if (gfTitlePh) {
+    enforcedFields.push({
+      id: 'name',
+      label: 'Name',
       type: 'string',
       defaultValue: '',
-      validation: { required: false, maxLength: 140, maxLines: 2 },
-      mapping: { placeholderId: gfTaglinePh },
+      validation: { required: true, maxLength: 80 },
+      mapping: { placeholderId: gfTitlePh },
     });
   }
 
   if (gfDatePh) {
-    upsert({
+    enforcedFields.push({
       id: 'date',
       label: 'Date',
       type: 'date',
       defaultValue: '',
-      validation: { required: false },
+      validation: { required: true },
       mapping: { placeholderId: gfDatePh },
     });
   }
 
-  if (gfFooterPh) {
-    upsert({
-      id: 'footer',
-      label: 'Footer',
-      type: 'string',
-      defaultValue: '',
-      validation: { required: false, maxLength: 200 },
-      mapping: { placeholderId: gfFooterPh },
-    });
-  }
-
-  if (gfLogoPh) {
-    upsert({
-      id: 'logo',
-      label: 'Logo',
-      type: 'image',
-      defaultValue: null,
-      validation: { required: false },
-      mapping: { placeholderId: gfLogoPh },
-    });
-  }
-
-  // If title/subtitle placeholders are missing or mapped differently, do NOT override existing mapping
-  // (we avoid surprising changes). But if schema is missing title/subtitle entirely, add them.
-  if (!existingById.has('title') && gfTitlePh) {
-    upsert({
-      id: 'title',
-      label: 'Deck Title',
-      type: 'string',
-      defaultValue: '',
-      validation: { required: true, maxLength: 120 },
-      mapping: { placeholderId: gfTitlePh },
-    });
-  }
-  if (!existingById.has('subtitle') && gfSubtitlePh) {
-    upsert({
-      id: 'subtitle',
-      label: 'Subtitle',
-      type: 'string',
-      defaultValue: '',
-      validation: { required: false, maxLength: 160 },
-      mapping: { placeholderId: gfSubtitlePh },
-    });
-  }
-
-  gf.fields = fields;
+  gf.fields = enforcedFields;
   next.slideTypes.global_first = gf;
+
+  /**
+   * Also set template defaults for the fixed texts so:
+   * - SlidePreview shows them at exact extracted coordinates
+   * - PPT generation uses them without any user input or wizard data mapping
+   *
+   * We do this by populating placeholder.text in the template model itself.
+   */
+  const layouts = Array.isArray(next?.slideTypes?.global_first?.layoutId)
+    ? []
+    : Array.isArray(next.layouts)
+      ? next.layouts
+      : Array.isArray(templateModel?.layouts)
+        ? templateModel.layouts
+        : null;
+
+  // NOTE: We cannot rely on `next.layouts` (flow schema) – we mutate the actual templateModel object
+  // that is stored separately in state; so instead, we update templateModel in-place in LOAD.
+  // However this helper runs only to return a modified flow schema, so we also return a hint object
+  // for the caller to apply fixed-text defaults. The caller applies it after we return.
+  next.__globalFirstFixedTextDefaults = {
+    tagline: gfTaglinePh ? { placeholderId: gfTaglinePh, text: 'Tata Elxsi' } : null,
+    subtitle: gfSubtitlePh ? { placeholderId: gfSubtitlePh, text: 'Digital RMG Weekly Metrics' } : null,
+  };
+
+  // Silence unused variable lint (we keep `layouts` comment to document why we don't use it here)
+  void layouts;
+
   return next;
 }
 
@@ -316,8 +295,9 @@ function minimalPreviewValidation(flowSchema, wizardData, orderedSlides) {
 
   const globalFirstStep = orderedSlides.find((s) => s.slideType === 'global_first');
   if (globalFirstStep) {
-    const key = requiredFieldKeyFromStep(globalFirstStep, ['title', 'deckTitle', 'presentationTitle']);
-    if (key && !isNonEmptyString(wizardData?.globalFirst?.[key])) errors.push('Global First: title is required.');
+    // Per requirements: Global First must have exactly two required inputs: Name + Date.
+    if (!isNonEmptyString(wizardData?.globalFirst?.name)) errors.push('Global First: Name is required.');
+    if (!isNonEmptyString(wizardData?.globalFirst?.date)) errors.push('Global First: Date is required.');
   }
 
   const factories = Array.isArray(wizardData?.skillFactories) ? wizardData.skillFactories : [];
@@ -512,8 +492,24 @@ export function WizardProvider({ children, loadSchemas }) {
       try {
         const [{ wizardSchema, templateModel, extractedTemplate }, flowSchemaRaw] = await Promise.all([loadSchemas(), loadWizardFlowSchema()]);
 
-        // Enrich flow schema using extracted template placeholders (Global First extras: date/footer/logo).
+        // Enrich flow schema using extracted template placeholders.
+        // Global First is enforced to exactly: Name (required) + Date (required), and fixed texts are applied to template placeholders.
         const flowSchema = normalizeGlobalFirstFieldsFromTemplate(flowSchemaRaw, templateModel);
+
+        // Apply fixed-text defaults directly to the templateModel placeholders so preview/PPT show them without inputs.
+        const fixed = flowSchema?.__globalFirstFixedTextDefaults || null;
+        if (fixed && templateModel && Array.isArray(templateModel.layouts)) {
+          for (const item of [fixed.tagline, fixed.subtitle]) {
+            if (!item?.placeholderId) continue;
+            for (const l of templateModel.layouts) {
+              const phs = Array.isArray(l?.placeholders) ? l.placeholders : [];
+              const idx = phs.findIndex((p) => p?.id === item.placeholderId);
+              if (idx >= 0) {
+                phs[idx] = { ...phs[idx], text: item.text };
+              }
+            }
+          }
+        }
 
         const defaults = buildDefaultWizardData(flowSchema);
 
