@@ -412,7 +412,9 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           const hasValue = value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
 
           let labelText;
-          if (isGlobalFirst && mappedField?.id === 'date' && ph.id === 'GF_DATE') {
+          // Global First: GF_DATE is the only editable overlay. Use DD MMM YYYY format and template style/geometry.
+          // Important: do not depend on the wizard field id here; always apply to the GF_DATE placeholder itself.
+          if (isGlobalFirst && ph.id === 'GF_DATE') {
             const formatted = hasValue ? formatDdMmmYyyy(value) : '';
             labelText = formatted;
           } else {
