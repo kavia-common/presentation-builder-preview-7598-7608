@@ -92,36 +92,38 @@
       ],
       "placeholders": [
         {
-          "id": "GF_TITLE",
-          "name": "slide1.object14",
-          "kind": "title",
-          "box": { "xPt": 61.53, "yPt": 230.44, "wPt": 229.5, "hPt": 35.6 },
-          "zIndex": 20,
-          "style": { "fontFamily": "Arial", "fontSizePt": 18, "fontWeight": 700, "color": "#111827", "align": "left" }
-        },
-        {
-          "id": "GF_SUBTITLE",
-          "name": "slide1.object15",
-          "kind": "body",
-          "box": { "xPt": 61.53, "yPt": 312.08, "wPt": 318.65, "hPt": 71.34 },
-          "zIndex": 21,
-          "style": { "fontFamily": "Arial", "fontSizePt": 14, "fontWeight": 500, "color": "#111827", "align": "left" }
-        },
-        {
           "id": "GF_TAGLINE",
           "name": "slide1.object12",
           "kind": "body",
-          "box": { "xPt": 61.53, "yPt": 289.20, "wPt": 318.65, "hPt": 18.0 },
+          "text": "TATA ELXSI",
+          "box": { "xPt": 79.2, "yPt": 162.0, "wPt": 360.0, "hPt": 18.0 },
+          "zIndex": 18,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.5, "fontWeight": 700, "color": "#FFFFFF", "align": "left" }
+        },
+        {
+          "id": "GF_TITLE",
+          "name": "slide1.object14",
+          "kind": "title",
+          "box": { "xPt": 79.2, "yPt": 182.0, "wPt": 520.0, "hPt": 22.0 },
           "zIndex": 19,
-          "style": { "fontFamily": "Arial", "fontSizePt": 12, "fontWeight": 600, "color": "#111827", "align": "left" }
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.5, "fontWeight": 600, "color": "#FFFFFF", "align": "left" }
         },
         {
           "id": "GF_DATE",
           "name": "slide1.object11",
           "kind": "body",
-          "box": { "xPt": 61.53, "yPt": 384.0, "wPt": 318.65, "hPt": 30.0 },
-          "zIndex": 22,
-          "style": { "fontFamily": "Arial", "fontSizePt": 11, "fontWeight": 500, "color": "#111827", "align": "left" }
+          "box": { "xPt": 79.2, "yPt": 202.5, "wPt": 520.0, "hPt": 18.0 },
+          "zIndex": 20,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.0, "fontWeight": 600, "color": "#FFFFFF", "align": "left" }
+        },
+        {
+          "id": "GF_SUBTITLE",
+          "name": "slide1.object15",
+          "kind": "body",
+          "text": "Digital RMG Weekly Metrics",
+          "box": { "xPt": 79.2, "yPt": 220.5, "wPt": 520.0, "hPt": 18.0 },
+          "zIndex": 21,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.0, "fontWeight": 600, "color": "#FFFFFF", "align": "left" }
         }
       ]
     },
