@@ -7,6 +7,7 @@ import {
   validateSlideRequiredFields,
 } from '../../services/schemaLoader';
 import { formatDdMmmYyyy, formatDateRangeDdMmmYyyy } from '../../utils/dateFormat';
+import { buildCssTextStyleFromTemplateStyle } from '../../services/templateStyle';
 
 function getPageSize(templateModel) {
   const wPt = templateModel?.meta?.pageSize?.widthPt;
@@ -85,20 +86,6 @@ function resolveDisplayTextForField({ slideStep, field, wizardData }) {
   return value;
 }
 
-function templateFontStack(themeFonts) {
-  const major = themeFonts?.major;
-  const minor = themeFonts?.minor;
-  const fallback = themeFonts?.fallbackStack || 'Helvetica Neue, Arial, sans-serif';
-  const chosen = (major && major.trim()) || (minor && minor.trim());
-  return chosen ? `"${chosen}", ${fallback}` : fallback;
-}
-
-function templateTextColor(themeColors) {
-  // Prefer dk1 if available; otherwise fallback to dark gray.
-  const c = themeColors?.dk1 || themeColors?.text || '#111827';
-  return typeof c === 'string' && c ? c : '#111827';
-}
-
 function normalizeHexColor(c) {
   if (!c || typeof c !== 'string') return null;
   if (c === 'none') return null;
@@ -106,48 +93,6 @@ function normalizeHexColor(c) {
   // if extractor emits hex without '#'
   if (/^[0-9a-fA-F]{6}$/.test(c)) return `#${c}`;
   return c;
-}
-
-function ptToPx(pt) {
-  // PowerPoint points map well to CSS px for on-screen preview; keep 1pt ~= 1px for fidelity.
-  // We intentionally do NOT scale (previous behavior used *0.9) because the request requires exact template typography.
-  if (typeof pt !== 'number' || Number.isNaN(pt)) return undefined;
-  return `${Math.max(1, pt)}px`;
-}
-
-function normalizeLineHeight(lineHeight) {
-  // Template extractor may emit:
-  // - unitless number (e.g., 1.1)
-  // - string (e.g., "1.1" or "14px")
-  // - numeric point value (rare) that should be treated as px-equivalent for preview
-  if (lineHeight == null) return undefined;
-
-  if (typeof lineHeight === 'number') {
-    if (lineHeight > 0 && lineHeight <= 3) return lineHeight; // treat as multiplier
-    return ptToPx(lineHeight); // treat as pt
-  }
-
-  if (typeof lineHeight === 'string') {
-    const s = lineHeight.trim();
-    if (!s) return undefined;
-    if (/^[0-9]*\.?[0-9]+$/.test(s)) {
-      const n = Number(s);
-      if (!Number.isNaN(n)) {
-        if (n > 0 && n <= 3) return n;
-        return ptToPx(n);
-      }
-    }
-    return s;
-  }
-
-  return undefined;
-}
-
-function normalizeFontWeight(fontWeight) {
-  if (fontWeight == null) return undefined;
-  if (typeof fontWeight === 'number') return fontWeight;
-  if (typeof fontWeight === 'string') return fontWeight;
-  return undefined;
 }
 
 function renderFixedShape(shape, rectCss, templateIndex) {
@@ -179,6 +124,7 @@ function renderFixedShape(shape, rectCss, templateIndex) {
       className="ocean-slide-shape fixed"
       style={{
         ...rectCss,
+        // Keep existing non-template visualization for fixed shapes (not part of the strict text theming rules)
         background: fill || 'rgba(17, 24, 39, 0.02)',
         border: stroke ? `${Math.max(1, strokeWidthPt)}px solid ${stroke}` : 'none',
         zIndex: shape?.zIndex || 0,
@@ -298,8 +244,10 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     }
   }, [warnings]);
 
-  const fontFamily = templateFontStack(templateModel?.theme?.fonts);
-  const textColor = templateTextColor(templateModel?.theme?.colors);
+  // IMPORTANT: For Global First, Global Last, and SF1 we must not apply theme fallbacks.
+  // Placeholder styles are applied verbatim per-shape. The canvas should not impose font/color.
+  const fontFamily = undefined;
+  const textColor = undefined;
 
   // Render extracted layout background as an image when available.
   // Global Last is locked to a fixed background image and must render identically in preview and PPT generation.
@@ -420,8 +368,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
             const combined = formatDateRangeDdMmmYyyy(start, end);
 
             const style = precise?.style || ph?.style || null;
+            const cssText = buildCssTextStyleFromTemplateStyle(style);
             const align = style?.align || 'left';
-            const resolvedFontFamily = style?.fontFamily ? `"${style.fontFamily}", ${fontFamily}` : fontFamily;
 
             return (
               <div
@@ -445,12 +393,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                   style={{
                     width: '100%',
                     whiteSpace: 'pre-wrap',
-                    fontFamily: resolvedFontFamily,
-                    fontSize: style?.fontSizePt ? ptToPx(style.fontSizePt) : undefined,
-                    fontWeight: normalizeFontWeight(style?.fontWeight),
-                    color: normalizeHexColor(style?.color) || textColor,
-                    textAlign: align,
-                    lineHeight: normalizeLineHeight(style?.lineHeight),
+                    ...cssText,
                   }}
                 >
                   {combined || ''}
@@ -514,9 +457,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           }
 
           const style = precise?.style || ph?.style || null;
+          const cssText = buildCssTextStyleFromTemplateStyle(style);
           const align = style?.align || 'left';
-
-          const resolvedFontFamily = style?.fontFamily ? `"${style.fontFamily}", ${fontFamily}` : fontFamily;
 
           return (
             <div
@@ -540,12 +482,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                 style={{
                   width: '100%',
                   whiteSpace: 'pre-wrap',
-                  fontFamily: resolvedFontFamily,
-                  fontSize: style?.fontSizePt ? ptToPx(style.fontSizePt) : undefined,
-                  fontWeight: normalizeFontWeight(style?.fontWeight),
-                  color: normalizeHexColor(style?.color) || (isGlobalFirst ? undefined : textColor),
-                  textAlign: align,
-                  lineHeight: normalizeLineHeight(style?.lineHeight),
+                  ...cssText,
                 }}
               >
                 {labelText}

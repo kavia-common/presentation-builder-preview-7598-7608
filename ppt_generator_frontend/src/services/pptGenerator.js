@@ -6,6 +6,7 @@ import {
   resolveTemplateAssetUrl,
 } from './schemaLoader';
 import { formatDdMmmYyyy, formatDateRangeDdMmmYyyy } from '../utils/dateFormat';
+import { buildPptTextOptionsFromTemplateStyle } from './templateStyle';
 
 /**
  * Generator rules (template-driven):
@@ -270,21 +271,16 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         const h = ptToIn(box.hPt);
 
         const style = ph?.style || null;
-        const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
-        const color = style?.color ? String(style.color).replace('#', '') : 'FFFFFF';
-        const align = style?.align || 'left';
-        const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
+
+        // Exact template typography (no overrides/fallbacks).
+        const textOpts = buildPptTextOptionsFromTemplateStyle(style);
 
         slide.addText(safeText, {
           x,
           y,
           w,
           h,
-          fontSize,
-          bold,
-          color,
-          align,
-          fontFace: style?.fontFamily || undefined,
+          ...textOpts,
         });
       }
 
@@ -391,11 +387,8 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const text = value == null || value === '' ? templateDefault : String(value);
           const style = ph?.style || null;
 
-          // Exact template typography (no overrides).
-          const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
-          const color = style?.color ? String(style.color).replace('#', '') : '111827';
-          const align = style?.align || 'left';
-          const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
+          // Exact template typography (no overrides/fallbacks).
+          const textOpts = buildPptTextOptionsFromTemplateStyle(style);
 
           // Global First is handled earlier (background + date-only), so we never enter here for it.
           // Non-GlobalFirst: no diagnostic text; use template default or empty.
@@ -407,11 +400,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
               y,
               w,
               h,
-              fontSize,
-              bold,
-              color,
-              align,
-              fontFace: style?.fontFamily || undefined,
+              ...textOpts,
             });
           }
         } else if (!isGlobalFirst) {
