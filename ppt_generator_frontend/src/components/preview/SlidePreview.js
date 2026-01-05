@@ -175,6 +175,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   const templateIndex = useMemo(() => buildTemplateIndex(templateModel, extractedTemplate), [templateModel, extractedTemplate]);
 
   const isGlobalFirst = slideStep?.slideType === 'global_first';
+  const isGlobalLast = slideStep?.slideType === 'global_last';
 
   const fields = useMemo(() => {
     // New flow uses slideStep.fields (already flattened), but keep compatibility fallback.
@@ -191,9 +192,9 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
 
   const placeholders = useMemo(() => {
     /**
-     * For Global First the template is locked and MUST be pixel-perfect.
-     * Therefore we render ONLY these 4 placeholders and ONLY if template geometry exists.
-     * No fallback boxes, and no additional placeholders.
+     * Locked slides policy:
+     * - Global First: pixel-perfect; render ONLY allowed placeholders using extracted geometry.
+     * - Global Last: pixel-perfect; render ONLY extracted placeholders (no fallback boxes).
      */
     let list = [];
     if (layout?.placeholders?.length) list = layout.placeholders;
@@ -209,12 +210,22 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
       return list;
     }
 
-    // Non-global-first slides: fallback is allowed.
+    if (isGlobalLast) {
+      // Render exactly what the extracted template provides for global_last (text/boxes).
+      // No fallbacks and no extra placeholders.
+      return list.filter((p) => {
+        const precise = getTemplatePlaceholder(templateIndex, p?.id);
+        return Boolean(precise?.box);
+      });
+    }
+
+    // Other slides: fallback is allowed.
     if (!list.length) return fallbackBoxesForFields(fields);
     return list;
-  }, [layout, fields, isGlobalFirst, templateIndex]);
+  }, [layout, fields, isGlobalFirst, isGlobalLast, templateIndex]);
 
-  // For Global First slide, we must display ONLY the four text elements and no other visuals.
+  // Global First: only its 4 text placeholders (no background/fixedShapes).
+  // Global Last: render background + fixedShapes for exact replication.
   const fixedShapes = useMemo(() => {
     if (isGlobalFirst) return [];
     const list = [];
@@ -336,7 +347,9 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
 
           const rect = box ? scaleRect(box, page) : { left: '5%', top: '5%', width: '90%', height: '12%' };
           const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
-          const value = mappedField ? resolveValueForStep(wizardData, slideStep, mappedField.id) : null;
+
+          // Global Last is fully locked: ignore wizardData and always render template default text.
+          const value = isGlobalLast ? null : mappedField ? resolveValueForStep(wizardData, slideStep, mappedField.id) : null;
 
           const isImage = (precise?.kind || ph.kind) === 'image' || mappedField?.type === 'image';
 

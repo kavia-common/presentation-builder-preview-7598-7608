@@ -24,13 +24,21 @@ function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
    *   - Date (date picker) -> GF_DATE
    * - Both fields are required and gate Preview navigation.
    *
+   * Global Last slide customization (per user requirements):
+   * - MUST be fully locked / non-editable.
+   * - No inputs are exposed by the wizard.
+   * - All text/graphics are rendered exactly as in the extracted template.
+   *
    * IMPORTANT:
    * - Do NOT alter layout/coordinates. Only map fields to already-existing placeholders.
-   * - We intentionally DROP any previously auto-detected Global First fields to keep exactly two inputs.
    */
   if (!flowSchema || typeof flowSchema !== 'object') return flowSchema;
 
   const next = { ...flowSchema, slideTypes: { ...(flowSchema.slideTypes || {}) } };
+
+  // -------------------------
+  // Global First: enforce inputs
+  // -------------------------
   const gf = next.slideTypes.global_first
     ? { ...next.slideTypes.global_first }
     : { label: 'Global First', layoutId: 'global_first', fields: [] };
@@ -69,32 +77,33 @@ function normalizeGlobalFirstFieldsFromTemplate(flowSchema, templateModel) {
   gf.fields = enforcedFields;
   next.slideTypes.global_first = gf;
 
+  // -------------------------
+  // Global Last: enforce no inputs
+  // -------------------------
+  const gl = next.slideTypes.global_last
+    ? { ...next.slideTypes.global_last }
+    : { label: 'Global Last', layoutId: 'global_last', fields: [] };
+  gl.fields = [];
+  next.slideTypes.global_last = gl;
+
   /**
-   * Also set template defaults for the fixed texts so:
-   * - SlidePreview shows them at exact extracted coordinates
-   * - PPT generation uses them without any user input or wizard data mapping
-   *
-   * We do this by populating placeholder.text in the template model itself.
+   * Apply fixed-text defaults by populating placeholder.text in the template model itself.
+   * This ensures preview and PPT generation match the extracted template without exposing inputs.
    */
-  const layouts = Array.isArray(next?.slideTypes?.global_first?.layoutId)
-    ? []
-    : Array.isArray(next.layouts)
-      ? next.layouts
-      : Array.isArray(templateModel?.layouts)
-        ? templateModel.layouts
-        : null;
-
-  // NOTE: We cannot rely on `next.layouts` (flow schema) – we mutate the actual templateModel object
-  // that is stored separately in state; so instead, we update templateModel in-place in LOAD.
-  // However this helper runs only to return a modified flow schema, so we also return a hint object
-  // for the caller to apply fixed-text defaults. The caller applies it after we return.
-  next.__globalFirstFixedTextDefaults = {
-    tagline: gfTaglinePh ? { placeholderId: gfTaglinePh, text: 'Tata Elxsi' } : null,
-    subtitle: gfSubtitlePh ? { placeholderId: gfSubtitlePh, text: 'Digital RMG Weekly Metrics' } : null,
+  next.__templateFixedTextDefaults = {
+    globalFirst: {
+      tagline: gfTaglinePh ? { placeholderId: gfTaglinePh, text: 'Tata Elxsi' } : null,
+      subtitle: gfSubtitlePh ? { placeholderId: gfSubtitlePh, text: 'Digital RMG Weekly Metrics' } : null,
+    },
+    globalLast: {
+      // These are taken from the provided reference image and are intended to be non-editable.
+      // If the extracted placeholder IDs change in a future template re-extraction, update these IDs accordingly.
+      thankYou: { placeholderId: 'GL_THANK_YOU', text: 'THANK YOU' },
+      brand: { placeholderId: 'GL_BRAND', text: 'TATA ELXSI' },
+      cta: { placeholderId: 'GL_CTA', text: 'FIND OUT MORE' },
+      website: { placeholderId: 'GL_WEBSITE', text: 'www.tataelxsi.com' },
+    },
   };
-
-  // Silence unused variable lint (we keep `layouts` comment to document why we don't use it here)
-  void layouts;
 
   return next;
 }
@@ -493,14 +502,15 @@ export function WizardProvider({ children, loadSchemas }) {
         const [{ wizardSchema, templateModel, extractedTemplate }, flowSchemaRaw] = await Promise.all([loadSchemas(), loadWizardFlowSchema()]);
 
         // Enrich flow schema using extracted template placeholders.
-        // Global First is enforced to exactly: Name (required) + Date (required), and fixed texts are applied to template placeholders.
+        // Global First is enforced to exactly: Name (required) + Date (required).
+        // Global Last is enforced to have NO inputs (fully locked).
         const flowSchema = normalizeGlobalFirstFieldsFromTemplate(flowSchemaRaw, templateModel);
 
-        // Apply fixed-text defaults directly to the templateModel placeholders so preview/PPT show them without inputs.
-        const fixed = flowSchema?.__globalFirstFixedTextDefaults || null;
+        // Apply fixed-text defaults directly to templateModel so preview/PPT show them without inputs.
+        const fixed = flowSchema?.__templateFixedTextDefaults || null;
         if (fixed && templateModel && Array.isArray(templateModel.layouts)) {
-          for (const item of [fixed.tagline, fixed.subtitle]) {
-            if (!item?.placeholderId) continue;
+          const applyFixedText = (item) => {
+            if (!item?.placeholderId) return;
             for (const l of templateModel.layouts) {
               const phs = Array.isArray(l?.placeholders) ? l.placeholders : [];
               const idx = phs.findIndex((p) => p?.id === item.placeholderId);
@@ -508,7 +518,17 @@ export function WizardProvider({ children, loadSchemas }) {
                 phs[idx] = { ...phs[idx], text: item.text };
               }
             }
-          }
+          };
+
+          // Global First fixed texts
+          applyFixedText(fixed?.globalFirst?.tagline);
+          applyFixedText(fixed?.globalFirst?.subtitle);
+
+          // Global Last fixed texts (locked slide)
+          applyFixedText(fixed?.globalLast?.thankYou);
+          applyFixedText(fixed?.globalLast?.brand);
+          applyFixedText(fixed?.globalLast?.cta);
+          applyFixedText(fixed?.globalLast?.website);
         }
 
         const defaults = buildDefaultWizardData(flowSchema);

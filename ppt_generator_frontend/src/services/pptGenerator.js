@@ -227,6 +227,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
 
     const layout = getLayout(templateIndex, s.layoutId);
     const isGlobalFirst = s.slideType === 'global_first';
+    const isGlobalLast = s.slideType === 'global_last';
 
     // Global First must contain ONLY the specified elements:
     // - fixed text 'Tata Elxsi' (GF_TAGLINE)
@@ -237,6 +238,10 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     // - do NOT render layout background
     // - do NOT render fixed shapes
     // - render ONLY the four placeholders above, with exact template box/style
+    //
+    // Global Last must be fully locked and match the extracted template/image:
+    // - Render background + fixedShapes
+    // - Render ONLY template placeholder texts (no wizard inputs, no fallbacks)
     if (!isGlobalFirst) {
       // Layout background (best-effort): if the extractor provided a background asset, place it full-slide.
       if (layout?.background?.assetId) {
@@ -254,6 +259,46 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         // eslint-disable-next-line no-await-in-loop
         await renderFixedShapes(slide, layout, templateIndex);
       }
+    }
+
+    if (isGlobalLast) {
+      const placeholders = Array.isArray(layout?.placeholders) ? layout.placeholders : [];
+      for (const p of placeholders) {
+        const ph = getTemplatePlaceholder(templateIndex, p?.id);
+        const box = ph?.box;
+        if (!box || typeof box.xPt !== 'number') continue;
+
+        const x = ptToIn(box.xPt);
+        const y = ptToIn(box.yPt);
+        const w = ptToIn(box.wPt);
+        const h = ptToIn(box.hPt);
+
+        const text = typeof ph?.text === 'string' ? ph.text : '';
+        const style = ph?.style || null;
+
+        const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
+        const color = style?.color ? String(style.color).replace('#', '') : '111827';
+        const align = style?.align || 'left';
+        const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
+
+        if (text) {
+          slide.addText(text, {
+            x,
+            y,
+            w,
+            h,
+            fontSize,
+            bold,
+            color,
+            align,
+            fontFace: style?.fontFamily || undefined,
+          });
+        }
+      }
+
+      // Skip all wizard field rendering and fallbacks for Global Last (fully locked).
+      // eslint-disable-next-line no-continue
+      continue;
     }
 
     // Global First: add the two fixed texts as template-driven placeholders.

@@ -116,16 +116,7 @@
     "global_last": {
       "label": "Global Last",
       "layoutId": "global_last",
-      "fields": [
-        {
-          "id": "closingText",
-          "label": "Closing Text",
-          "type": "string",
-          "defaultValue": "",
-          "validation": { "required": false, "maxLength": 160 },
-          "mapping": { "placeholderId": "GL_CLOSING" }
-        }
-      ]
+      "fields": []
     }
   }
 }
