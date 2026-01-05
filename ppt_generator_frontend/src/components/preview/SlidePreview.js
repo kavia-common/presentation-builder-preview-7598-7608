@@ -116,6 +116,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
 
   const templateIndex = useMemo(() => buildTemplateIndex(templateModel, extractedTemplate), [templateModel, extractedTemplate]);
 
+  const isGlobalFirst = slideStep?.slideType === 'global_first';
+
   const fields = useMemo(() => {
     // New flow uses slideStep.fields (already flattened), but keep compatibility fallback.
     if (Array.isArray(slideStep?.fields)) return slideStep.fields;
@@ -146,8 +148,6 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
 
     return list;
   }, [layout, fields, isGlobalFirst]);
-
-  const isGlobalFirst = slideStep?.slideType === 'global_first';
 
   // For Global First slide, we must display ONLY:
   // - fixed 'Tata Elxsi' (GF_TAGLINE)
@@ -202,6 +202,28 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
 
   // Avoid leaking object URLs when user provides images (File inputs).
   const [objectUrlByPlaceholderId, setObjectUrlByPlaceholderId] = useState({});
+
+  // Create object URLs in an effect (never during render).
+  useEffect(() => {
+    const nextUrls = {};
+    for (const ph of placeholders) {
+      const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
+      const value = mappedField ? resolveValueForStep(wizardData, slideStep, mappedField.id) : null;
+      const hasUserFile = value && typeof File !== 'undefined' && value instanceof File;
+
+      if (!hasUserFile) continue;
+      if (objectUrlByPlaceholderId[ph.id]) continue;
+
+      nextUrls[ph.id] = URL.createObjectURL(value);
+    }
+
+    if (Object.keys(nextUrls).length > 0) {
+      setObjectUrlByPlaceholderId((prev) => ({ ...prev, ...nextUrls }));
+    }
+
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeholders, fields, wizardData, slideStep?.key]);
 
   useEffect(() => {
     // Cleanup all object URLs when slide changes/unmounts.
@@ -275,18 +297,13 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
 
           if (isImage) {
             // Priority order for image rendering:
-            // 1) user-provided file
+            // 1) user-provided file (object URL created in effect)
             // 2) template default asset referenced by placeholder (if any)
             const hasUserFile = value && typeof File !== 'undefined' && value instanceof File;
 
             let src = null;
             if (hasUserFile) {
               src = objectUrlByPlaceholderId[ph.id] || null;
-              if (!src) {
-                const url = URL.createObjectURL(value);
-                setObjectUrlByPlaceholderId((prev) => ({ ...prev, [ph.id]: url }));
-                src = url;
-              }
             } else if (precise?.assetId) {
               src = resolveTemplateAssetUrl(templateIndex, precise.assetId);
             }
