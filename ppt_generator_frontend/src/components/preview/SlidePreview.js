@@ -292,7 +292,12 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
 
           // If no user data exists, show template's default text (if provided); else show placeholder id.
           const templateDefault = typeof precise?.text === 'string' && precise.text.trim() ? precise.text : null;
-          const labelText = value ? String(value) : templateDefault || `[${ph.id}]`;
+
+          // IMPORTANT:
+          // - Use a non-truthy check so values like 0 (or other falsy-but-valid values) still render.
+          // - Treat empty string as "not provided" so template defaults show through.
+          const hasValue = value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
+          const labelText = hasValue ? String(value) : templateDefault || `[${ph.id}]`;
 
           // Apply placeholder style when present (font size, weight, color, align).
           const style = precise?.style || ph?.style || null;
