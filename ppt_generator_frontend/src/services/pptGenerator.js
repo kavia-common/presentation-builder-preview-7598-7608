@@ -5,7 +5,7 @@ import {
   getTemplatePlaceholder,
   resolveTemplateAssetUrl,
 } from './schemaLoader';
-import { formatDdMmmYyyy } from '../utils/dateFormat';
+import { formatDdMmmYyyy, formatDateRangeDdMmmYyyy } from '../utils/dateFormat';
 
 /**
  * Generator rules (template-driven):
@@ -60,8 +60,20 @@ function applyTransform(value, transformName) {
 
   switch (transformName) {
     case 'bulletsToLines': {
-      if (Array.isArray(value)) return value.map(String).join('\n');
+      if (Array.isArray(value)) return value.map((s) => String(s ?? '').trim()).filter(Boolean).map((s) => `• ${s}`).join('\n');
       return String(value);
+    }
+    case 'teamMembersToLines': {
+      if (!Array.isArray(value)) return '';
+      return value
+        .map((r) => {
+          const name = String(r?.name ?? '').trim();
+          const role = String(r?.role ?? '').trim();
+          if (!name && !role) return '';
+          return name && role ? `${name}    ${role}` : name || role;
+        })
+        .filter(Boolean)
+        .join('\n');
     }
     case 'formatPercent': {
       const n = typeof value === 'number' ? value : Number(value);
@@ -307,8 +319,22 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
 
     for (let i = 0; i < fields.length; i += 1) {
       const field = fields[i];
-      const valueRaw = resolveValueForStep(wizardData, s, field.id);
-      const value = applyTransform(valueRaw, field?.mapping?.transform);
+      let valueRaw = resolveValueForStep(wizardData, s, field.id);
+
+      // Skill Factory Slide 1: Start/End date fields are rendered together as a single date-range string.
+      if ((field.id === 'dateRangeStart' || field.id === 'dateRangeEnd') && s.slideType === 'sf1') {
+        const start = resolveValueForStep(wizardData, s, 'dateRangeStart');
+        const end = resolveValueForStep(wizardData, s, 'dateRangeEnd');
+        valueRaw = formatDateRangeDdMmmYyyy(start, end);
+      }
+
+      // Support rich types as simple text for PPT (template-driven box/style still applies).
+      const transform =
+        field?.mapping?.transform ||
+        (field.type === 'bullets' ? 'bulletsToLines' : null) ||
+        (field.type === 'table' ? 'teamMembersToLines' : null);
+
+      const value = applyTransform(valueRaw, transform);
 
       const placeholderId =
         field?.mapping?.placeholderId ||

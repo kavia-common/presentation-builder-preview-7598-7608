@@ -37,3 +37,16 @@ export function formatDdMmmYyyy(dateStr) {
 
   return `${dd} ${mmm} ${year}`;
 }
+
+/**
+ * PUBLIC_INTERFACE
+ * Format an ISO start/end date pair into "DD MMM YYYY – DD MMM YYYY".
+ * Returns empty string if either date is missing/invalid.
+ */
+export function formatDateRangeDdMmmYyyy(startDateStr, endDateStr) {
+  /** This is a public function. */
+  const a = formatDdMmmYyyy(startDateStr);
+  const b = formatDdMmmYyyy(endDateStr);
+  if (!a || !b) return '';
+  return `${a} – ${b}`;
+}

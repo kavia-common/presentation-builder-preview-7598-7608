@@ -128,6 +128,78 @@
       ]
     },
     {
+      "id": "sf1",
+      "name": "Skill Factory Slide 1",
+      "background": null,
+      "fixedShapes": [],
+      "placeholders": [
+        {
+          "id": "SF1_SKILL_FACTORY_NAME",
+          "name": "sf1.skillFactoryName",
+          "kind": "title",
+          "box": { "xPt": 32.0, "yPt": 28.0, "wPt": 620.0, "hPt": 22.0 },
+          "zIndex": 10,
+          "style": { "fontFamily": "Arial", "fontSizePt": 14.0, "fontWeight": 700, "color": "#111827", "align": "left", "lineHeight": 1.0 }
+        },
+        {
+          "id": "SF1_SPRINT_NUMBER",
+          "name": "sf1.sprintNumber",
+          "kind": "body",
+          "box": { "xPt": 680.0, "yPt": 28.0, "wPt": 250.0, "hPt": 18.0 },
+          "zIndex": 11,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.5, "fontWeight": 700, "color": "#111827", "align": "right", "lineHeight": 1.0 }
+        },
+        {
+          "id": "SF1_DATE_RANGE",
+          "name": "sf1.dateRange",
+          "kind": "body",
+          "box": { "xPt": 680.0, "yPt": 46.0, "wPt": 250.0, "hPt": 16.0 },
+          "zIndex": 12,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.0, "fontWeight": 600, "color": "#111827", "align": "right", "lineHeight": 1.0 }
+        },
+        {
+          "id": "SF1_PROJECT_HIGHLIGHTS",
+          "name": "sf1.projectHighlights",
+          "kind": "body",
+          "box": { "xPt": 44.0, "yPt": 102.0, "wPt": 400.0, "hPt": 128.0 },
+          "zIndex": 20,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.0, "fontWeight": 400, "color": "#111827", "align": "left", "lineHeight": 1.1 }
+        },
+        {
+          "id": "SF1_PROJECT_LOWLIGHTS",
+          "name": "sf1.projectLowlights",
+          "kind": "body",
+          "box": { "xPt": 476.0, "yPt": 102.0, "wPt": 440.0, "hPt": 128.0 },
+          "zIndex": 21,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.0, "fontWeight": 400, "color": "#111827", "align": "left", "lineHeight": 1.1 }
+        },
+        {
+          "id": "SF1_TEAM_MEMBERS_TABLE",
+          "name": "sf1.teamMembers",
+          "kind": "body",
+          "box": { "xPt": 500.0, "yPt": 264.0, "wPt": 416.0, "hPt": 122.0 },
+          "zIndex": 25,
+          "style": { "fontFamily": "Arial", "fontSizePt": 9.5, "fontWeight": 400, "color": "#111827", "align": "left", "lineHeight": 1.1 }
+        },
+        {
+          "id": "SF1_KEY_ACTIVITIES_COMPLETED",
+          "name": "sf1.activitiesCompleted",
+          "kind": "body",
+          "box": { "xPt": 44.0, "yPt": 334.0, "wPt": 400.0, "hPt": 156.0 },
+          "zIndex": 30,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.0, "fontWeight": 400, "color": "#111827", "align": "left", "lineHeight": 1.15 }
+        },
+        {
+          "id": "SF1_KEY_ACTIVITIES_PLANNED",
+          "name": "sf1.activitiesPlanned",
+          "kind": "body",
+          "box": { "xPt": 476.0, "yPt": 334.0, "wPt": 440.0, "hPt": 156.0 },
+          "zIndex": 31,
+          "style": { "fontFamily": "Arial", "fontSizePt": 10.0, "fontWeight": 400, "color": "#111827", "align": "left", "lineHeight": 1.15 }
+        }
+      ]
+    },
+    {
       "id": "global_last",
       "name": "Global Last",
       "background": {

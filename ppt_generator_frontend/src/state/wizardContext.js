@@ -103,7 +103,17 @@ function buildEmptySlideData(flowSchema, slideType) {
   const fields = getFieldsForSlideType(flowSchema, slideType);
   for (const f of fields) {
     if (!f?.id) continue;
-    data[f.id] = f.defaultValue ?? (f.type === 'image' ? null : '');
+
+    // Normalize default values by type.
+    if (f.defaultValue !== undefined) {
+      data[f.id] = f.defaultValue;
+      continue;
+    }
+
+    if (f.type === 'image') data[f.id] = null;
+    else if (f.type === 'bullets') data[f.id] = [];
+    else if (f.type === 'table') data[f.id] = [];
+    else data[f.id] = '';
   }
   return data;
 }

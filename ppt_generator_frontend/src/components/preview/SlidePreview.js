@@ -6,7 +6,7 @@ import {
   resolveTemplateAssetUrl,
   validateSlideRequiredFields,
 } from '../../services/schemaLoader';
-import { formatDdMmmYyyy } from '../../utils/dateFormat';
+import { formatDdMmmYyyy, formatDateRangeDdMmmYyyy } from '../../utils/dateFormat';
 
 function getPageSize(templateModel) {
   const wPt = templateModel?.meta?.pageSize?.widthPt;
@@ -47,6 +47,42 @@ function resolveValueForStep(wizardData, slideStep, fieldId) {
   }
 
   return undefined;
+}
+
+function bulletsToLines(arr) {
+  if (!Array.isArray(arr)) return '';
+  return arr.map((s) => String(s ?? '').trim()).filter(Boolean).map((s) => `• ${s}`).join('\n');
+}
+
+function teamMembersToLines(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return '';
+  // Simple fixed-width-ish columns using spacing. Exact table fidelity in PPT is handled in generator.
+  // Preview uses template box/style; we keep it legible and deterministic.
+  const lines = [];
+  for (const r of rows) {
+    const name = String(r?.name ?? '').trim();
+    const role = String(r?.role ?? '').trim();
+    if (!name && !role) continue;
+    if (name && role) lines.push(`${name}    ${role}`);
+    else lines.push(name || role);
+  }
+  return lines.join('\n');
+}
+
+function resolveDisplayTextForField({ slideStep, field, wizardData }) {
+  // Special cases for Skill Factory Slide 1 requirements.
+  if (field?.id === 'dateRangeStart' || field?.id === 'dateRangeEnd') {
+    const start = resolveValueForStep(wizardData, slideStep, 'dateRangeStart');
+    const end = resolveValueForStep(wizardData, slideStep, 'dateRangeEnd');
+    return formatDateRangeDdMmmYyyy(start, end);
+  }
+
+  const value = resolveValueForStep(wizardData, slideStep, field?.id);
+
+  if (field?.type === 'bullets') return bulletsToLines(value);
+  if (field?.type === 'table') return teamMembersToLines(value);
+
+  return value;
 }
 
 function templateFontStack(themeFonts) {
@@ -367,7 +403,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           const rect = box ? scaleRect(box, page) : { left: '5%', top: '5%', width: '90%', height: '12%' };
           const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
 
-          const value = mappedField ? resolveValueForStep(wizardData, slideStep, mappedField.id) : null;
+          const value = mappedField ? resolveDisplayTextForField({ slideStep, field: mappedField, wizardData }) : null;
 
           const isImage = (precise?.kind || ph.kind) === 'image' || mappedField?.type === 'image';
 

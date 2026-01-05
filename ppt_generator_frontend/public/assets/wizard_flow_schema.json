@@ -30,20 +30,82 @@
       "layoutId": "sf1",
       "fields": [
         {
-          "id": "heading",
-          "label": "Heading",
+          "id": "skillFactoryName",
+          "label": "Skill Factory Name",
           "type": "string",
           "defaultValue": "",
-          "validation": { "required": false, "maxLength": 120 },
-          "mapping": { "placeholderId": "SF1_HEADING" }
+          "validation": { "required": true, "maxLength": 80 },
+          "mapping": { "placeholderId": "SF1_SKILL_FACTORY_NAME" }
         },
         {
-          "id": "body",
-          "label": "Body",
-          "type": "richText",
+          "id": "sprintNumber",
+          "label": "Sprint Number",
+          "type": "string",
           "defaultValue": "",
-          "validation": { "required": false, "maxLines": 10 },
-          "mapping": { "placeholderId": "SF1_BODY" }
+          "validation": { "required": true, "maxLength": 40 },
+          "mapping": { "placeholderId": "SF1_SPRINT_NUMBER" }
+        },
+        {
+          "id": "dateRangeStart",
+          "label": "Date Range (Start)",
+          "type": "date",
+          "defaultValue": "",
+          "validation": { "required": true },
+          "mapping": { "placeholderId": "SF1_DATE_RANGE" }
+        },
+        {
+          "id": "dateRangeEnd",
+          "label": "Date Range (End)",
+          "type": "date",
+          "defaultValue": "",
+          "validation": { "required": true },
+          "mapping": { "placeholderId": "SF1_DATE_RANGE" }
+        },
+        {
+          "id": "projectHighlights",
+          "label": "Project Highlights",
+          "type": "textarea",
+          "defaultValue": "",
+          "validation": { "required": true, "maxLines": 12 },
+          "mapping": { "placeholderId": "SF1_PROJECT_HIGHLIGHTS" }
+        },
+        {
+          "id": "projectLowlights",
+          "label": "Project Lowlights",
+          "type": "textarea",
+          "defaultValue": "",
+          "validation": { "required": true, "maxLines": 12 },
+          "mapping": { "placeholderId": "SF1_PROJECT_LOWLIGHTS" }
+        },
+        {
+          "id": "teamMembers",
+          "label": "Team Members",
+          "type": "table",
+          "defaultValue": [],
+          "validation": { "required": false },
+          "table": {
+            "columns": [
+              { "id": "name", "label": "Name", "type": "string" },
+              { "id": "role", "label": "Role", "type": "string" }
+            ]
+          },
+          "mapping": { "placeholderId": "SF1_TEAM_MEMBERS_TABLE" }
+        },
+        {
+          "id": "activitiesCompleted",
+          "label": "Key activities completed in previous week",
+          "type": "bullets",
+          "defaultValue": [],
+          "validation": { "required": false },
+          "mapping": { "placeholderId": "SF1_KEY_ACTIVITIES_COMPLETED" }
+        },
+        {
+          "id": "activitiesPlanned",
+          "label": "Key activities planned for next week",
+          "type": "bullets",
+          "defaultValue": [],
+          "validation": { "required": false },
+          "mapping": { "placeholderId": "SF1_KEY_ACTIVITIES_PLANNED" }
         }
       ]
     },

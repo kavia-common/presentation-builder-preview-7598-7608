@@ -46,12 +46,26 @@ function humanizeType(type) {
   switch (type) {
     case 'string': return 'Text';
     case 'richText': return 'Rich text';
+    case 'textarea': return 'Multiline text';
     case 'number': return 'Number';
     case 'date': return 'Date';
     case 'select': return 'Select';
     case 'image': return 'Image';
+    case 'bullets': return 'Bulleted list';
+    case 'table': return 'Table';
     default: return type || 'Field';
   }
+}
+
+function normalizeBullets(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v ?? ''));
+  if (value == null || value === '') return [];
+  return String(value).split('\n').map((s) => s.replace(/^\s*•\s*/, '')).map((s) => s.trim()).filter(Boolean);
+}
+
+function normalizeTable(value) {
+  if (Array.isArray(value)) return value;
+  return [];
 }
 
 // PUBLIC_INTERFACE
@@ -139,6 +153,74 @@ export default function FieldRenderer({ field, value, onChange }) {
             </option>
           ))}
         </select>
+      )}
+
+      {field.type === 'bullets' && (
+        <div>
+          <textarea
+            {...common}
+            className="ocean-textarea"
+            value={normalizeBullets(value).join('\n')}
+            onChange={(e) => onChange(normalizeBullets(e.target.value))}
+            placeholder={'One item per line'}
+          />
+          <div className="ocean-help">Rendered as bullets in preview/PPT.</div>
+        </div>
+      )}
+
+      {field.type === 'table' && (
+        <div style={{ border: '1px solid rgba(17,24,39,0.12)', borderRadius: 10, padding: 10 }}>
+          <div className="ocean-help" style={{ marginBottom: 8 }}>
+            Add team members (Name, Role).
+          </div>
+
+          {(normalizeTable(value) || []).map((row, idx) => (
+            <div key={String(idx)} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+              <input
+                className="ocean-input"
+                type="text"
+                value={row?.name ?? ''}
+                onChange={(e) => {
+                  const next = [...normalizeTable(value)];
+                  next[idx] = { ...(next[idx] || {}), name: e.target.value };
+                  onChange(next);
+                }}
+                placeholder="Name"
+              />
+              <input
+                className="ocean-input"
+                type="text"
+                value={row?.role ?? ''}
+                onChange={(e) => {
+                  const next = [...normalizeTable(value)];
+                  next[idx] = { ...(next[idx] || {}), role: e.target.value };
+                  onChange(next);
+                }}
+                placeholder="Role"
+              />
+              <button
+                type="button"
+                className="ocean-btn"
+                onClick={() => {
+                  const next = [...normalizeTable(value)];
+                  next.splice(idx, 1);
+                  onChange(next);
+                }}
+                aria-label="Remove row"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            className="ocean-btn ocean-btn-secondary"
+            onClick={() => onChange([...(normalizeTable(value) || []), { name: '', role: '' }])}
+          >
+            Add row
+          </button>
+        </div>
       )}
 
       {field.type === 'image' && (
