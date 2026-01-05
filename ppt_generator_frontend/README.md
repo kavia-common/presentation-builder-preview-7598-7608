@@ -29,6 +29,13 @@ It correctly bundles React in production mode and optimizes the build for the be
 
 ## Customization
 
+## Fixed slide backgrounds
+
+The following slides are rendered as fixed, non-editable full-slide backgrounds in both the in-app preview and PPT export:
+
+- `public/assets/global_first_background.png` (Global First)
+- `public/assets/global_last_background.png` (Global Last)
+
 ### Colors
 
 The main brand colors are defined as CSS variables in `src/App.css`:

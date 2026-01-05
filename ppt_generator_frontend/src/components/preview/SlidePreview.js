@@ -325,28 +325,27 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideStep?.key]);
 
-  // Global Last must be purely the provided image with no overlays or additional rendering.
-  if (isGlobalLast) {
+  // Global First & Global Last must be purely the provided image with no overlays or additional rendering.
+  if (isGlobalFirst || isGlobalLast) {
+    const fixedBg = isGlobalFirst ? '/assets/global_first_background.png' : '/assets/global_last_background.png';
     return (
       <div className="ocean-slide-canvas" aria-label={`Preview for ${slideStep?.title || 'slide'}`}>
         <div className="ocean-slide-layer" style={{ fontFamily, color: textColor }}>
-          {backgroundUrl && (
-            <img
-              src={backgroundUrl}
-              alt="slide background"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: backgroundFit, // contain => no crop, no distortion (letterbox if needed)
-                objectPosition: 'center center',
-                zIndex: 0,
-                // Avoid any subpixel/transform artifacts across DPRs
-                transform: 'translateZ(0)',
-              }}
-            />
-          )}
+          <img
+            src={fixedBg}
+            alt="slide background"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain', // no crop, no distortion (letterbox if needed)
+              objectPosition: 'center center',
+              zIndex: 0,
+              // Avoid any subpixel/transform artifacts across DPRs
+              transform: 'translateZ(0)',
+            }}
+          />
         </div>
       </div>
     );

@@ -229,32 +229,20 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     const isGlobalFirst = s.slideType === 'global_first';
     const isGlobalLast = s.slideType === 'global_last';
 
-    // Global First must contain ONLY the specified elements:
-    // - fixed text 'Tata Elxsi' (GF_TAGLINE)
-    // - fixed text 'Digital RMG Weekly Metrics' (GF_SUBTITLE)
-    // - editable Name (GF_TITLE) and Date (GF_DATE)
-    //
-    // Therefore:
-    // - do NOT render layout background
-    // - do NOT render fixed shapes
-    // - render ONLY the four placeholders above, with exact template box/style
-    //
-    // Global Last must be fully locked and match the extracted template/image:
-    // - Render background + fixedShapes
-    // - Render ONLY template placeholder texts (no wizard inputs, no fallbacks)
-    if (!isGlobalFirst) {
-      // Layout background:
-      // - Global Last is locked to a user-provided image and MUST match preview exactly.
-      // - Other slides use the extracted template background asset when present.
-      if (isGlobalLast) {
-        // eslint-disable-next-line no-await-in-loop
-        const bgData = await urlToDataUrl('/assets/global_last_background.png');
-        if (bgData) {
-          // Match preview: preserve aspect ratio with NO cropping (letterbox if needed).
-          // NOTE: PptxGenJS sizing:'contain' keeps full image visible without distortion.
-          slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5, sizing: { type: 'contain' } });
-        }
-      } else if (layout?.background?.assetId) {
+    // Global First and Global Last must be fully locked and match the provided reference images:
+    // - Render fixed full-slide background images
+    // - Render NOTHING else (no fixedShapes, no placeholders, no wizard inputs)
+    if (isGlobalFirst || isGlobalLast) {
+      // eslint-disable-next-line no-await-in-loop
+      const bgData = await urlToDataUrl(isGlobalFirst ? '/assets/global_first_background.png' : '/assets/global_last_background.png');
+      if (bgData) {
+        // Match preview: preserve aspect ratio with NO cropping (letterbox if needed).
+        // NOTE: PptxGenJS sizing:'contain' keeps full image visible without distortion.
+        slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5, sizing: { type: 'contain' } });
+      }
+    } else {
+      // Layout background for non-locked slides.
+      if (layout?.background?.assetId) {
         // eslint-disable-next-line no-await-in-loop
         const bgUrl = resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
         // eslint-disable-next-line no-await-in-loop
@@ -271,79 +259,10 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
       }
     }
 
-    if (isGlobalLast) {
-      const placeholders = Array.isArray(layout?.placeholders) ? layout.placeholders : [];
-      for (const p of placeholders) {
-        const ph = getTemplatePlaceholder(templateIndex, p?.id);
-        const box = ph?.box;
-        if (!box || typeof box.xPt !== 'number') continue;
-
-        const x = ptToIn(box.xPt);
-        const y = ptToIn(box.yPt);
-        const w = ptToIn(box.wPt);
-        const h = ptToIn(box.hPt);
-
-        const text = typeof ph?.text === 'string' ? ph.text : '';
-        const style = ph?.style || null;
-
-        const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
-        const color = style?.color ? String(style.color).replace('#', '') : '111827';
-        const align = style?.align || 'left';
-        const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
-
-        if (text) {
-          slide.addText(text, {
-            x,
-            y,
-            w,
-            h,
-            fontSize,
-            bold,
-            color,
-            align,
-            fontFace: style?.fontFamily || undefined,
-          });
-        }
-      }
-
-      // Skip all wizard field rendering and fallbacks for Global Last (fully locked).
+    // Locked slides: after inserting the fixed background, render nothing else.
+    if (isGlobalFirst || isGlobalLast) {
       // eslint-disable-next-line no-continue
       continue;
-    }
-
-    // Global First: add the two fixed texts as template-driven placeholders.
-    if (isGlobalFirst) {
-      const fixedIds = ['GF_TAGLINE', 'GF_SUBTITLE'];
-      for (const placeholderId of fixedIds) {
-        const ph = getTemplatePlaceholder(templateIndex, placeholderId);
-        const box = ph?.box;
-        if (!box || typeof box.xPt !== 'number') continue;
-
-        const x = ptToIn(box.xPt);
-        const y = ptToIn(box.yPt);
-        const w = ptToIn(box.wPt);
-        const h = ptToIn(box.hPt);
-
-        const text = typeof ph?.text === 'string' ? ph.text : '';
-        const style = ph?.style || null;
-
-        const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
-        const color = style?.color ? String(style.color).replace('#', '') : '111827';
-        const align = style?.align || 'left';
-        const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
-
-        slide.addText(text || '', {
-          x,
-          y,
-          w,
-          h,
-          fontSize,
-          bold,
-          color,
-          align,
-          fontFace: style?.fontFamily || undefined,
-        });
-      }
     }
 
     // Render only allowed wizard fields on Global First (Name + Date) and ONLY via template boxes.
