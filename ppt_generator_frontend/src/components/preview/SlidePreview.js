@@ -192,29 +192,25 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   const placeholders = useMemo(() => {
     /**
      * For Global First the template is locked and MUST be pixel-perfect.
-     * So we:
-     * - render ONLY the 4 known placeholders
-     * - require template-extracted geometry (box) for each
-     * - do NOT fall back to generated boxes for this slide
+     * Therefore we render ONLY these 4 placeholders and ONLY if template geometry exists.
+     * No fallback boxes, and no additional placeholders.
      */
     let list = [];
     if (layout?.placeholders?.length) list = layout.placeholders;
 
     if (isGlobalFirst) {
       const allowed = new Set(['GF_TAGLINE', 'GF_SUBTITLE', 'GF_TITLE', 'GF_DATE']);
-      list = list.filter((p) => allowed.has(p?.id));
-
-      // Hard stop: if template placeholders are missing, do NOT fabricate geometry
-      // (fabrication would break pixel-perfect requirement).
-      list = list.filter((p) => {
-        const precise = getTemplatePlaceholder(templateIndex, p?.id);
-        return Boolean(precise?.box);
-      });
-    } else if (!list.length) {
-      // Non-global-first slides: fallback is allowed.
-      list = fallbackBoxesForFields(fields);
+      list = list
+        .filter((p) => allowed.has(p?.id))
+        .filter((p) => {
+          const precise = getTemplatePlaceholder(templateIndex, p?.id);
+          return Boolean(precise?.box);
+        });
+      return list;
     }
 
+    // Non-global-first slides: fallback is allowed.
+    if (!list.length) return fallbackBoxesForFields(fields);
     return list;
   }, [layout, fields, isGlobalFirst, templateIndex]);
 

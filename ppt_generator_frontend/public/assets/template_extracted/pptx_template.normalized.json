@@ -95,7 +95,7 @@
           "id": "GF_TAGLINE",
           "name": "slide1.object12",
           "kind": "body",
-          "text": "TATA ELXSI",
+          "text": "Tata Elxsi",
           "box": { "xPt": 59.0, "yPt": 191.0, "wPt": 270.0, "hPt": 16.0 },
           "zIndex": 18,
           "style": { "fontFamily": "Arial", "fontSizePt": 11.0, "fontWeight": 700, "color": "#FFFFFF", "align": "left", "lineHeight": 1.0 }

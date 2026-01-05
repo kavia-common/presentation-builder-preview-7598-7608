@@ -236,8 +236,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     // Therefore:
     // - do NOT render layout background
     // - do NOT render fixed shapes
-    // - only render GF_TAGLINE/GF_SUBTITLE as fixed placeholders via template defaults
-    // - only render the two wizard fields (mapped to GF_TITLE/GF_DATE)
+    // - render ONLY the four placeholders above, with exact template box/style
     if (!isGlobalFirst) {
       // Layout background (best-effort): if the extractor provided a background asset, place it full-slide.
       if (layout?.background?.assetId) {
@@ -257,8 +256,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
       }
     }
 
-    // Add the two fixed texts for Global First as template-driven placeholders,
-    // so they appear without any user input.
+    // Global First: add the two fixed texts as template-driven placeholders.
     if (isGlobalFirst) {
       const fixedIds = ['GF_TAGLINE', 'GF_SUBTITLE'];
       for (const placeholderId of fixedIds) {
@@ -274,12 +272,9 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
         const text = typeof ph?.text === 'string' ? ph.text : '';
         const style = ph?.style || null;
 
-        // Exact template typography (no fallbacks/overrides except safe defaults when extractor omitted fields).
         const fontSize = typeof style?.fontSizePt === 'number' ? Math.max(1, style.fontSizePt) : 14;
         const color = style?.color ? String(style.color).replace('#', '') : '111827';
         const align = style?.align || 'left';
-
-        // pptxgen expects boolean bold; map numeric weight >= 700 to bold.
         const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
 
         slide.addText(text || '', {
@@ -296,7 +291,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
       }
     }
 
-    // Render only allowed wizard fields on Global First (Name + Date).
+    // Render only allowed wizard fields on Global First (Name + Date) and ONLY via template boxes.
     const fieldsAll = Array.isArray(s.fields) ? s.fields : [];
     const fields = isGlobalFirst ? fieldsAll.filter((f) => f?.id === 'name' || f?.id === 'date') : fieldsAll;
 
