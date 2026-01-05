@@ -197,6 +197,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
 
   const isGlobalFirst = slideStep?.slideType === 'global_first';
   const isGlobalLast = slideStep?.slideType === 'global_last';
+  const isSf1 = slideStep?.slideType === 'sf1';
 
   const fields = useMemo(() => {
     // New flow uses slideStep.fields (already flattened), but keep compatibility fallback.
@@ -216,6 +217,9 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
      * Locked slides policy:
      * - Global First: render ONLY GF_DATE using extracted geometry (no other overlays).
      * - Global Last: locked to background-only (no overlays).
+     *
+     * Skill Factory Slide 1 strict policy (per task requirements):
+     * - Use extracted template placeholders ONLY (no fallback placeholders/geometry).
      */
     let list = [];
     if (layout?.placeholders?.length) list = layout.placeholders;
@@ -233,10 +237,16 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
       return [];
     }
 
+    if (isSf1) {
+      // SF1 must not fall back to any synthetic positioning; missing placeholders are treated as "render nothing".
+      // This ensures the preview uses the normalized template SF1 layout geometry verbatim.
+      return list;
+    }
+
     // Other slides: fallback is allowed.
     if (!list.length) return fallbackBoxesForFields(fields);
     return list;
-  }, [layout, fields, isGlobalFirst, isGlobalLast, templateIndex]);
+  }, [layout, fields, isGlobalFirst, isGlobalLast, isSf1, templateIndex]);
 
   // Global First: do not render fixedShapes to avoid duplicating template background elements.
   // Global Last: background-only.
@@ -401,6 +411,54 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           const box = isGlobalFirst ? precise?.box : precise?.box || ph.box;
 
           const rect = box ? scaleRect(box, page) : { left: '5%', top: '5%', width: '90%', height: '12%' };
+
+          // Skill Factory Slide 1: SF1_DATE_RANGE is mapped from two fields (dateRangeStart + dateRangeEnd).
+          // Render the combined date range ONCE to prevent duplicate overlay rendering (must match PPT export behavior).
+          if (isSf1 && ph.id === 'SF1_DATE_RANGE') {
+            const start = resolveValueForStep(wizardData, slideStep, 'dateRangeStart');
+            const end = resolveValueForStep(wizardData, slideStep, 'dateRangeEnd');
+            const combined = formatDateRangeDdMmmYyyy(start, end);
+
+            const style = precise?.style || ph?.style || null;
+            const align = style?.align || 'left';
+            const resolvedFontFamily = style?.fontFamily ? `"${style.fontFamily}", ${fontFamily}` : fontFamily;
+
+            return (
+              <div
+                key={ph.id}
+                className="ocean-slide-shape placeholder"
+                style={{
+                  ...rect,
+                  zIndex: precise?.zIndex || ph.zIndex || 1,
+                  transform: ph.rotationDeg ? `rotate(${ph.rotationDeg}deg)` : undefined,
+                  opacity: typeof ph.opacity === 'number' ? ph.opacity : 1,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
+                  padding: 0,
+                  boxSizing: 'border-box',
+                }}
+                title={ph.id}
+              >
+                <div
+                  className="shape-label"
+                  style={{
+                    width: '100%',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: resolvedFontFamily,
+                    fontSize: style?.fontSizePt ? ptToPx(style.fontSizePt) : undefined,
+                    fontWeight: normalizeFontWeight(style?.fontWeight),
+                    color: normalizeHexColor(style?.color) || textColor,
+                    textAlign: align,
+                    lineHeight: normalizeLineHeight(style?.lineHeight),
+                  }}
+                >
+                  {combined || ''}
+                </div>
+              </div>
+            );
+          }
+
           const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
 
           const value = mappedField ? resolveDisplayTextForField({ slideStep, field: mappedField, wizardData }) : null;
@@ -426,7 +484,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                 className="ocean-slide-shape placeholder"
                 style={{
                   ...rect,
-                  zIndex: ph.zIndex || 1,
+                  zIndex: precise?.zIndex || ph.zIndex || 1,
                   transform: ph.rotationDeg ? `rotate(${ph.rotationDeg}deg)` : undefined,
                   opacity: typeof ph.opacity === 'number' ? ph.opacity : 1,
                 }}
@@ -466,7 +524,7 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
               className="ocean-slide-shape placeholder"
               style={{
                 ...rect,
-                zIndex: ph.zIndex || 1,
+                zIndex: precise?.zIndex || ph.zIndex || 1,
                 transform: ph.rotationDeg ? `rotate(${ph.rotationDeg}deg)` : undefined,
                 opacity: typeof ph.opacity === 'number' ? ph.opacity : 1,
                 display: 'flex',
