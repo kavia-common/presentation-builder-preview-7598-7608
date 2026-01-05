@@ -277,10 +277,13 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   const textColor = templateTextColor(templateModel?.theme?.colors);
 
   // Render extracted layout background as an image when available.
+  // Global Last is locked to a fixed background image (user-provided attachment) and must render
+  // identically in preview and PPT generation.
   const backgroundUrl = useMemo(() => {
+    if (isGlobalLast) return '/assets/global_last_background.png';
     if (!layout?.background?.assetId) return null;
     return resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
-  }, [layout, templateIndex]);
+  }, [layout, templateIndex, isGlobalLast]);
 
   // Avoid leaking object URLs when user provides images (File inputs).
   const [objectUrlByPlaceholderId, setObjectUrlByPlaceholderId] = useState({});

@@ -243,8 +243,17 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     // - Render background + fixedShapes
     // - Render ONLY template placeholder texts (no wizard inputs, no fallbacks)
     if (!isGlobalFirst) {
-      // Layout background (best-effort): if the extractor provided a background asset, place it full-slide.
-      if (layout?.background?.assetId) {
+      // Layout background:
+      // - Global Last is locked to a user-provided image and MUST match preview exactly.
+      // - Other slides use the extracted template background asset when present.
+      if (isGlobalLast) {
+        // eslint-disable-next-line no-await-in-loop
+        const bgData = await urlToDataUrl('/assets/global_last_background.png');
+        if (bgData) {
+          // Preserve aspect ratio and fill slide canvas without distortion.
+          slide.addImage({ data: bgData, x: 0, y: 0, w: 13.333, h: 7.5, sizing: { type: 'cover' } });
+        }
+      } else if (layout?.background?.assetId) {
         // eslint-disable-next-line no-await-in-loop
         const bgUrl = resolveTemplateAssetUrl(templateIndex, layout.background.assetId);
         // eslint-disable-next-line no-await-in-loop
