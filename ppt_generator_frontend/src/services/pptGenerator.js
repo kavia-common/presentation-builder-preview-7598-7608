@@ -11,6 +11,10 @@ import {
  * - Prefer coordinates and placeholder mappings from extracted normalized template (templateModel.layouts[*].placeholders[*].box).
  * - Slide order is authoritative: GlobalFirst + N SkillFactory groups (4 slides each) + GlobalLast.
  * - If extracted template is minimal, fall back to safe stacking layout (non-breaking).
+ *
+ * IMPORTANT for this task:
+ * - Do not insert any warning/diagnostic/placeholder-notice text into the generated PPTX.
+ * - Keep any diagnostics only in developer console logs (non-visual).
  */
 
 function isProbablyDataUrl(v) {
@@ -127,14 +131,20 @@ function ptToIn(pt) {
   return pt / 72;
 }
 
-function addFallbackText(slide, i, placeholderId, value) {
+/**
+ * Fallback rendering helpers:
+ * These are kept non-diagnostic (no placeholder IDs, no "(missing)" messages).
+ * They exist only so that content can still be written somewhere if template geometry is unavailable.
+ */
+function addFallbackText(slide, i, value) {
   const x = 0.6;
   const y = 0.6 + i * 0.65;
   const w = 12.3;
   const h = 1.0;
-  const hint = `[${placeholderId}]`;
 
-  const text = value == null || value === '' ? `${hint} (empty)` : `${hint}\n${String(value)}`;
+  const text = value == null ? '' : String(value);
+  if (!text) return;
+
   slide.addText(text, {
     x,
     y,
@@ -145,20 +155,16 @@ function addFallbackText(slide, i, placeholderId, value) {
   });
 }
 
-async function addFallbackImage(slide, i, placeholderId, fileOrUrl) {
+async function addFallbackImage(slide, i, fileOrUrl) {
   const x = 0.6;
   const y = 0.6 + i * 0.65;
   const w = 3.0;
   const h = 2.0;
-  const hint = `[${placeholderId}]`;
 
   const dataUrl = await fileToDataUrl(fileOrUrl);
-  if (dataUrl) {
-    slide.addImage({ data: dataUrl, x, y, w, h });
-    slide.addText(hint, { x: x + 3.2, y, w: 9.1, h: 0.5, fontSize: 10, color: '666666' });
-  } else {
-    slide.addText(`${hint} (image missing)`, { x, y, w: 12.3, h: 0.6, fontSize: 12, color: '999999' });
-  }
+  if (!dataUrl) return;
+
+  slide.addImage({ data: dataUrl, x, y, w, h });
 }
 
 async function renderFixedShapes(slide, layout, templateIndex) {
@@ -323,22 +329,16 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const w = ptToIn(box.wPt);
           const h = ptToIn(box.hPt);
 
+          // IMPORTANT: No placeholder notices. If image missing, render nothing.
           if (dataUrl) {
             slide.addImage({ data: dataUrl, x, y, w, h });
-          } else if (!isGlobalFirst) {
-            // Keep placeholder id visible for later fidelity (not for Global First).
-            slide.addText(`[${placeholderId}] (image missing)`, {
-              x,
-              y,
-              w,
-              h: Math.min(h, 0.4),
-              fontSize: 10,
-              color: '999999',
-            });
+          } else {
+            // eslint-disable-next-line no-console
+            console.warn('[generatePptx] image missing (suppressed in PPT output):', { slide: s?.key, placeholderId });
           }
         } else if (!isGlobalFirst) {
           // eslint-disable-next-line no-await-in-loop
-          await addFallbackImage(slide, i, placeholderId, valueRaw);
+          await addFallbackImage(slide, i, valueRaw);
         }
       } else {
         if (box && typeof box.xPt === 'number') {
@@ -358,6 +358,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
 
           // Global First: always render labeled line with dashed placeholder when empty.
+          // Non-GlobalFirst: NEVER render placeholder IDs as fallbacks; use template default or empty.
           let safeText;
           if (
             isGlobalFirst &&
@@ -366,22 +367,24 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           ) {
             safeText = formatGlobalFirstLabeledLine(field.id, value);
           } else {
-            safeText = isGlobalFirst ? (text || '') : (text || `[${placeholderId}]`);
+            safeText = text || '';
           }
 
-          slide.addText(safeText, {
-            x,
-            y,
-            w,
-            h,
-            fontSize,
-            bold,
-            color,
-            align,
-            fontFace: style?.fontFamily || undefined,
-          });
+          if (safeText) {
+            slide.addText(safeText, {
+              x,
+              y,
+              w,
+              h,
+              fontSize,
+              bold,
+              color,
+              align,
+              fontFace: style?.fontFamily || undefined,
+            });
+          }
         } else if (!isGlobalFirst) {
-          addFallbackText(slide, i, placeholderId, value);
+          addFallbackText(slide, i, value);
         }
       }
     }

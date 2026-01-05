@@ -226,6 +226,11 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     return list;
   }, [layout, isGlobalFirst]);
 
+  /**
+   * Suppress all warning/notice rendering in UI.
+   * We still compute warnings to help developers debug (console only), but we never render them
+   * and we do not add any visible "placeholder notice" overlays in the preview.
+   */
   const requiredWarnings = useMemo(
     () => validateSlideRequiredFields({ slideStep, wizardData, templateIndex }),
     [slideStep, wizardData, templateIndex]
@@ -251,6 +256,15 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   }, [slideStep, templateIndex]);
 
   const warnings = useMemo(() => [...requiredWarnings, ...missingPlaceholderWarnings], [requiredWarnings, missingPlaceholderWarnings]);
+
+  useEffect(() => {
+    if (warnings.length > 0) {
+      // Keep warnings only in non-visual logs (developer console).
+      // This satisfies: "Keep warnings (if any) only in non-visual logs or developer console, not in UI".
+      // eslint-disable-next-line no-console
+      console.warn('[SlidePreview] non-blocking warnings (suppressed in UI):', warnings);
+    }
+  }, [warnings]);
 
   const fontFamily = templateFontStack(templateModel?.theme?.fonts);
   const textColor = templateTextColor(templateModel?.theme?.colors);
@@ -311,34 +325,6 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           />
         )}
 
-        {warnings.length > 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              left: 10,
-              top: 10,
-              right: 10,
-              zIndex: 999,
-              background: 'rgba(245, 158, 11, 0.12)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
-              borderRadius: 10,
-              padding: '8px 10px',
-              color: '#92400e',
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-            role="status"
-            aria-live="polite"
-          >
-            Preview warnings (non-blocking):
-            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontWeight: 600 }}>
-              {warnings.slice(0, 6).map((w) => (
-                <li key={`${w.fieldId}:${w.placeholderId || ''}`}>{w.message}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
         {fixedShapes.map((sh) => {
           if (!sh?.box) return null;
           const rectCss = scaleRect(sh.box, page);
@@ -386,13 +372,15 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
                 {src ? (
                   <img src={src} alt={ph.id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <div className="shape-label">[{ph.id}] image</div>
+                  // Keep the preview clean: do not render any warning/notice labels.
+                  // Missing images are simply blank (no placeholder notice).
+                  <div style={{ width: '100%', height: '100%' }} aria-hidden="true" />
                 )}
               </div>
             );
           }
 
-          // If no user data exists, show template's default text (if provided); else show placeholder id.
+          // If no user data exists, show template's default text (if provided); else show empty.
           const templateDefault = typeof precise?.text === 'string' && precise.text.trim() ? precise.text : null;
 
           // IMPORTANT:
@@ -411,11 +399,11 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           ) {
             labelText = formatGlobalFirstLabeledLine(mappedField.id, hasValue ? value : '');
           } else {
-            labelText = hasValue ? String(value) : templateDefault || `[${ph.id}]`;
+            // Suppress placeholder notices: do not show [PLACEHOLDER_ID] when empty.
+            labelText = hasValue ? String(value) : templateDefault || '';
           }
 
-          // IMPORTANT (pixel-perfect Global First):
-          // Always use template placeholder style/geometry; no theme fallbacks, no opacity tweaks.
+          // Always use template placeholder style/geometry; no extra notices/overlays.
           const style = precise?.style || ph?.style || null;
           const align = style?.align || 'left';
 
