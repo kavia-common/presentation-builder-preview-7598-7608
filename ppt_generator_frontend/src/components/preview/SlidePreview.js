@@ -185,14 +185,12 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     if (layout?.placeholders?.length) list = layout.placeholders;
 
     if (isGlobalFirst) {
-      const allowed = new Set(['GF_DATE']);
-      list = list
-        .filter((p) => allowed.has(p?.id))
-        .filter((p) => {
-          const precise = getTemplatePlaceholder(templateIndex, p?.id);
-          return Boolean(precise?.box);
-        });
-      return list;
+      // Global First must show ONLY the date overlay at the exact template GF_DATE box.
+      // If GF_DATE cannot be found in the extracted template, render no overlay at all
+      // (prevents any fallback/misplaced date overlay).
+      const precise = getTemplatePlaceholder(templateIndex, 'GF_DATE');
+      if (!precise?.box) return [];
+      return [{ id: 'GF_DATE' }];
     }
 
     if (isGlobalLast) {

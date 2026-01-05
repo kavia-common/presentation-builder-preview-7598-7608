@@ -236,6 +236,7 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
     }
 
     // Global First: write ONLY the date text at GF_DATE using extracted box/style.
+    // No fallback positioning is allowed for this locked slide.
     if (isGlobalFirst) {
       const ph = getTemplatePlaceholder(templateIndex, 'GF_DATE');
       const box = ph?.box;
@@ -243,7 +244,14 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
       const rawDate = wizardData?.globalFirst?.date;
       const safeText = rawDate ? formatDdMmmYyyy(rawDate) : '';
 
-      if (safeText && box && typeof box.xPt === 'number') {
+      if (!box || typeof box.xPt !== 'number') {
+        // eslint-disable-next-line no-console
+        console.warn('[generatePptx] GF_DATE placeholder missing; date suppressed (no fallback placement).');
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+
+      if (safeText) {
         const x = ptToIn(box.xPt);
         const y = ptToIn(box.yPt);
         const w = ptToIn(box.wPt);
