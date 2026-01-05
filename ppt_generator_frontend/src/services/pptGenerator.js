@@ -80,6 +80,22 @@ function resolveDeckTitle(wizardData) {
   return 'presentation';
 }
 
+/**
+ * Global First formatting rules:
+ * - Name line should render as "Name : ---------" when empty, else "Name : <value>"
+ * - Date line should render as "Date : ---------" when empty, else "Date : <value>"
+ *
+ * IMPORTANT: We only change the TEXT CONTENT. We do not change placeholder box/style,
+ * so extracted template typography and coordinates remain the source of truth.
+ */
+function formatGlobalFirstLabeledLine(fieldId, rawValue) {
+  const isEmpty = rawValue == null || (typeof rawValue === 'string' && rawValue.trim() === '');
+  const v = isEmpty ? '---------' : String(rawValue);
+  if (fieldId === 'name') return `Name : ${v}`;
+  if (fieldId === 'date') return `Date : ${v}`;
+  return String(rawValue ?? '');
+}
+
 function safeFileName(name) {
   return (
     String(name)
@@ -339,9 +355,20 @@ export async function generatePptx({ templateModel, extractedTemplate, orderedSl
           const bold = typeof style?.fontWeight === 'number' ? style.fontWeight >= 700 : false;
           const align = style?.align || 'left';
 
-          // For Global First, do not show placeholder ids if empty; only show actual value or template default.
-          // (Template default for GF_TITLE/GF_DATE is empty, so these will truly be blank until user fills them.)
-          const safeText = isGlobalFirst ? (text || '') : (text || `[${placeholderId}]`);
+          // Global First: GF_TITLE (name) and GF_DATE (date) must render literal labeled lines even when empty.
+          let safeText;
+          if (
+            isGlobalFirst &&
+            (field.id === 'name' || field.id === 'date') &&
+            (placeholderId === 'GF_TITLE' || placeholderId === 'GF_DATE')
+          ) {
+            safeText = formatGlobalFirstLabeledLine(field.id, value);
+          } else {
+            // For Global First, do not show placeholder ids if empty; only show actual value or template default.
+            // (Template default for GF_TITLE/GF_DATE is empty, so these will truly be blank until user fills them,
+            // unless overridden by the labeled-line requirement above.)
+            safeText = isGlobalFirst ? (text || '') : (text || `[${placeholderId}]`);
+          }
 
           slide.addText(safeText, {
             x,

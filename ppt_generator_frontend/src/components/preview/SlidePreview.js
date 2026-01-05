@@ -7,6 +7,22 @@ import {
   validateSlideRequiredFields,
 } from '../../services/schemaLoader';
 
+/**
+ * Global First formatting rules:
+ * - Name line should render as "Name : ---------" when empty, else "Name : <value>"
+ * - Date line should render as "Date : ---------" when empty, else "Date : <value>"
+ *
+ * IMPORTANT: We only change the TEXT CONTENT. We do not change placeholder box/style,
+ * so extracted template typography and coordinates remain the source of truth.
+ */
+function formatGlobalFirstLabeledLine(fieldId, rawValue) {
+  const isEmpty = rawValue == null || (typeof rawValue === 'string' && rawValue.trim() === '');
+  const v = isEmpty ? '---------' : String(rawValue);
+  if (fieldId === 'name') return `Name : ${v}`;
+  if (fieldId === 'date') return `Date : ${v}`;
+  return String(rawValue ?? '');
+}
+
 function getPageSize(templateModel) {
   const wPt = templateModel?.meta?.pageSize?.widthPt;
   const hPt = templateModel?.meta?.pageSize?.heightPt;
@@ -378,7 +394,20 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
           // - Use a non-truthy check so values like 0 (or other falsy-but-valid values) still render.
           // - Treat empty string as "not provided" so template defaults show through.
           const hasValue = value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
-          const labelText = hasValue ? String(value) : templateDefault || `[${ph.id}]`;
+
+          // Global First special-case: GF_TITLE (name) and GF_DATE (date) must render as literal
+          // "Name : ..." / "Date : ..." even when empty (with dashed placeholder).
+          let labelText;
+          if (
+            isGlobalFirst &&
+            mappedField &&
+            (mappedField.id === 'name' || mappedField.id === 'date') &&
+            (ph.id === 'GF_TITLE' || ph.id === 'GF_DATE')
+          ) {
+            labelText = formatGlobalFirstLabeledLine(mappedField.id, hasValue ? value : '');
+          } else {
+            labelText = hasValue ? String(value) : templateDefault || `[${ph.id}]`;
+          }
 
           // Apply placeholder style when present (font size, weight, color, align, line-height).
           // For Global First slide, the request requires exact typography as per the extracted template.
