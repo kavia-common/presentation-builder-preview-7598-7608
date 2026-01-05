@@ -52,7 +52,11 @@ function resolveValueForStep(wizardData, slideStep, fieldId) {
 
 function bulletsToLines(arr) {
   if (!Array.isArray(arr)) return '';
-  return arr.map((s) => String(s ?? '').trim()).filter(Boolean).map((s) => `• ${s}`).join('\n');
+  return arr
+    .map((s) => String(s ?? '').trim())
+    .filter(Boolean)
+    .map((s) => `• ${s}`)
+    .join('\n');
 }
 
 function teamMembersToLines(rows) {
@@ -134,6 +138,38 @@ function renderFixedShape(shape, rectCss, templateIndex) {
   );
 }
 
+/**
+ * Build a deterministic map { [placeholderId]: field } for this slide.
+ * - Ensures SF1_DATE_RANGE is rendered exactly once.
+ * - Prevents duplicate overlay or ordering-related mismatches.
+ */
+function buildFieldByPlaceholderId(fields) {
+  const map = {};
+  for (const f of fields) {
+    const pid = f?.mapping?.placeholderId;
+    if (!pid) continue;
+    if (map[pid]) continue;
+    map[pid] = f;
+  }
+  return map;
+}
+
+/**
+ * For SF1, resolve placeholder text based on placeholder id (template contract),
+ * not on field ordering. This avoids any accidental rendering into a wrong box.
+ */
+function resolveSf1PlaceholderText({ placeholderId, slideStep, wizardData, fieldByPlaceholderId }) {
+  if (placeholderId === 'SF1_DATE_RANGE') {
+    const start = resolveValueForStep(wizardData, slideStep, 'dateRangeStart');
+    const end = resolveValueForStep(wizardData, slideStep, 'dateRangeEnd');
+    return formatDateRangeDdMmmYyyy(start, end);
+  }
+
+  const mappedField = fieldByPlaceholderId[placeholderId];
+  if (!mappedField) return null;
+  return resolveDisplayTextForField({ slideStep, field: mappedField, wizardData });
+}
+
 // PUBLIC_INTERFACE
 export default function SlidePreview({ slideStep, templateModel, extractedTemplate, wizardData }) {
   /** Render one slide preview using exact template coordinates when available; otherwise falls back. */
@@ -154,6 +190,8 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
     }
     return out;
   }, [slideStep]);
+
+  const fieldByPlaceholderId = useMemo(() => buildFieldByPlaceholderId(fields), [fields]);
 
   const layoutId = slideStep?.layoutId;
   const layout = useMemo(() => getLayout(templateIndex, layoutId), [templateIndex, layoutId]);
@@ -270,14 +308,17 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
   useEffect(() => {
     const nextUrls = {};
     for (const ph of placeholders) {
-      const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
+      const placeholderId = ph?.id;
+      if (!placeholderId) continue;
+
+      const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === placeholderId);
       const value = mappedField ? resolveValueForStep(wizardData, slideStep, mappedField.id) : null;
       const hasUserFile = value && typeof File !== 'undefined' && value instanceof File;
 
       if (!hasUserFile) continue;
-      if (objectUrlByPlaceholderId[ph.id]) continue;
+      if (objectUrlByPlaceholderId[placeholderId]) continue;
 
-      nextUrls[ph.id] = URL.createObjectURL(value);
+      nextUrls[placeholderId] = URL.createObjectURL(value);
     }
 
     if (Object.keys(nextUrls).length > 0) {
@@ -352,101 +393,81 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
         })}
 
         {placeholders.map((ph) => {
-          // Prefer exact coordinates from extracted placeholders by id.
-          const precise = getTemplatePlaceholder(templateIndex, ph.id);
+          const placeholderId = ph?.id;
+          if (!placeholderId) return null;
 
-          // Pixel-perfect rule for Global First: use ONLY the extracted box.
-          // Pixel-perfect rule for SF1: use ONLY the extracted box (no synthetic fallback rects).
-          const box =
-            isGlobalFirst || isSf1
-              ? precise?.box
-              : precise?.box || ph.box;
+          // Strict template extraction lookup.
+          const precise = getTemplatePlaceholder(templateIndex, placeholderId);
 
-          // If the template box is missing for SF1, render nothing (no fallback placement).
-          if (isSf1 && !box) return null;
+          // STRICT MODE: Global First and SF1 must use ONLY extracted box + extracted style.
+          // No computed default rectangles, no theme overrides, no ph.box fallback.
+          const box = (isGlobalFirst || isSf1) ? precise?.box : (precise?.box || ph?.box);
 
+          // If the template box is missing for SF1/GlobalFirst, render nothing (no fallback placement).
+          if ((isSf1 || isGlobalFirst) && !box) return null;
+
+          // If box missing in non-strict slides, fall back to a safe rect (allowed for other slide types only).
           const rect = box ? scaleRect(box, page) : { left: '5%', top: '5%', width: '90%', height: '12%' };
 
-          // Skill Factory Slide 1: SF1_DATE_RANGE is mapped from two fields (dateRangeStart + dateRangeEnd).
-          // Render the combined date range ONCE to prevent duplicate overlay rendering (must match PPT export behavior).
-          if (isSf1 && ph.id === 'SF1_DATE_RANGE') {
-            const start = resolveValueForStep(wizardData, slideStep, 'dateRangeStart');
-            const end = resolveValueForStep(wizardData, slideStep, 'dateRangeEnd');
-            const combined = formatDateRangeDdMmmYyyy(start, end);
+          // Resolve zIndex/rotation/opacity ONLY from template extraction in strict modes.
+          const zIndex = (isGlobalFirst || isSf1) ? (precise?.zIndex ?? 1) : (precise?.zIndex || ph?.zIndex || 1);
+          const rotationDeg = (isGlobalFirst || isSf1) ? (precise?.rotationDeg ?? 0) : (precise?.rotationDeg ?? ph?.rotationDeg ?? 0);
+          const opacity = (isGlobalFirst || isSf1) ? (typeof precise?.opacity === 'number' ? precise.opacity : 1) : (typeof ph?.opacity === 'number' ? ph.opacity : 1);
 
-            const style = precise?.style || ph?.style || null;
-            const cssText = buildCssTextStyleFromTemplateStyle(style);
-            const align = style?.align || 'left';
+          const style = (isGlobalFirst || isSf1) ? (precise?.style || null) : (precise?.style || ph?.style || null);
+          const cssText = buildCssTextStyleFromTemplateStyle(style);
+          const align = style?.align || 'left';
 
-            return (
-              <div
-                key={ph.id}
-                className="ocean-slide-shape placeholder"
-                style={{
-                  ...rect,
-                  zIndex: precise?.zIndex || ph.zIndex || 1,
-                  transform: ph.rotationDeg ? `rotate(${ph.rotationDeg}deg)` : undefined,
-                  opacity: typeof ph.opacity === 'number' ? ph.opacity : 1,
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
-                  padding: 0,
-                  boxSizing: 'border-box',
-                }}
-                title={ph.id}
-              >
-                <div
-                  className="shape-label"
-                  style={{
-                    width: '100%',
-                    whiteSpace: 'pre-wrap',
-                    ...cssText,
-                  }}
-                >
-                  {combined || ''}
-                </div>
-              </div>
-            );
+          // Decide content source:
+          // - Global First: only GF_DATE should exist in placeholders list; still enforce by placeholder id.
+          // - SF1: resolve by placeholder id (template contract), not by field ordering.
+          // - Others: map by placeholder id as before.
+          let value = null;
+          if (isSf1) {
+            value = resolveSf1PlaceholderText({ placeholderId, slideStep, wizardData, fieldByPlaceholderId });
+          } else {
+            const mappedField = fields.find((f) => (f?.mapping?.placeholderId || '') === placeholderId);
+            value = mappedField ? resolveDisplayTextForField({ slideStep, field: mappedField, wizardData }) : null;
           }
 
-          // For SF1, skip the generic mapped-field rendering for SF1_DATE_RANGE entirely;
-          // it is handled by the explicit combined renderer above.
-          const mappedField =
-            isSf1 && ph.id === 'SF1_DATE_RANGE'
-              ? null
-              : fields.find((f) => (f?.mapping?.placeholderId || '') === ph.id);
+          // Global First: GF_DATE is the only editable overlay. Apply formatting here.
+          if (isGlobalFirst && placeholderId === 'GF_DATE') {
+            const hasValue = value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
+            value = hasValue ? formatDdMmmYyyy(value) : '';
+          }
 
-          const value = mappedField ? resolveDisplayTextForField({ slideStep, field: mappedField, wizardData }) : null;
-
-          const isImage = (precise?.kind || ph.kind) === 'image' || mappedField?.type === 'image';
+          // Determine image vs text based on extracted template kind and/or field type.
+          const mappedFieldForNonSf1 = !isSf1 ? fields.find((f) => (f?.mapping?.placeholderId || '') === placeholderId) : null;
+          const isImage = (precise?.kind || ph?.kind) === 'image' || mappedFieldForNonSf1?.type === 'image';
 
           if (isImage) {
-            // Priority order for image rendering:
-            // 1) user-provided file (object URL created in effect)
-            // 2) template default asset referenced by placeholder (if any)
-            const hasUserFile = value && typeof File !== 'undefined' && value instanceof File;
+            // Strictly template box. Source:
+            // 1) user file mapped to this placeholder
+            // 2) template default asset referenced by extracted placeholder (assetId)
+            const valueRaw = mappedFieldForNonSf1 ? resolveValueForStep(wizardData, slideStep, mappedFieldForNonSf1.id) : null;
+            const hasUserFile = valueRaw && typeof File !== 'undefined' && valueRaw instanceof File;
 
             let src = null;
             if (hasUserFile) {
-              src = objectUrlByPlaceholderId[ph.id] || null;
+              src = objectUrlByPlaceholderId[placeholderId] || null;
             } else if (precise?.assetId) {
               src = resolveTemplateAssetUrl(templateIndex, precise.assetId);
             }
 
             return (
               <div
-                key={ph.id}
+                key={placeholderId}
                 className="ocean-slide-shape placeholder"
                 style={{
                   ...rect,
-                  zIndex: precise?.zIndex || ph.zIndex || 1,
-                  transform: ph.rotationDeg ? `rotate(${ph.rotationDeg}deg)` : undefined,
-                  opacity: typeof ph.opacity === 'number' ? ph.opacity : 1,
+                  zIndex,
+                  transform: rotationDeg ? `rotate(${rotationDeg}deg)` : undefined,
+                  opacity,
                 }}
-                title={ph.id}
+                title={placeholderId}
               >
                 {src ? (
-                  <img src={src} alt={ph.id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={src} alt={placeholderId} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <div style={{ width: '100%', height: '100%' }} aria-hidden="true" />
                 )}
@@ -454,40 +475,28 @@ export default function SlidePreview({ slideStep, templateModel, extractedTempla
             );
           }
 
-          const templateDefault = typeof precise?.text === 'string' && precise.text.trim() ? precise.text : null;
+          const templateDefault = typeof precise?.text === 'string' && precise.text.trim() ? precise.text : '';
 
           const hasValue = value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
+          const labelText = hasValue ? String(value) : templateDefault;
 
-          let labelText;
-          // Global First: GF_DATE is the only editable overlay. Use DD MMM YYYY format and template style/geometry.
-          // Important: do not depend on the wizard field id here; always apply to the GF_DATE placeholder itself.
-          if (isGlobalFirst && ph.id === 'GF_DATE') {
-            const formatted = hasValue ? formatDdMmmYyyy(value) : '';
-            labelText = formatted;
-          } else {
-            labelText = hasValue ? String(value) : templateDefault || '';
-          }
-
-          const style = precise?.style || ph?.style || null;
-          const cssText = buildCssTextStyleFromTemplateStyle(style);
-          const align = style?.align || 'left';
-
+          // In strict slides, do not fabricate any text box padding/margins/line-height beyond template props.
           return (
             <div
-              key={ph.id}
+              key={placeholderId}
               className="ocean-slide-shape placeholder"
               style={{
                 ...rect,
-                zIndex: precise?.zIndex || ph.zIndex || 1,
-                transform: ph.rotationDeg ? `rotate(${ph.rotationDeg}deg)` : undefined,
-                opacity: typeof ph.opacity === 'number' ? ph.opacity : 1,
+                zIndex,
+                transform: rotationDeg ? `rotate(${rotationDeg}deg)` : undefined,
+                opacity,
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
                 padding: 0,
                 boxSizing: 'border-box',
               }}
-              title={ph.id}
+              title={placeholderId}
             >
               <div
                 className="shape-label"
